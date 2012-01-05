@@ -10,6 +10,33 @@
 <script type="text/javascript" src="webgl-utils.js"></script>
 <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
 
+<script id="shader-box-vs" type="x-shader/x-vertex">
+attribute vec3 aVertexPosition;
+attribute vec4 aVertexColor;
+
+uniform mat4 uMVMatrix;
+uniform mat4 uPMatrix;
+
+varying vec4 vColor;
+
+void main(void) {
+    gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+    vColor = aVertexColor;
+}
+</script>
+
+<script id="shader-box-fs" type="x-shader/x-fragment">
+precision mediump float;
+
+varying vec4 vColor;
+
+void main(void) {
+    gl_FragColor = vColor;
+}
+
+</script>
+
+
 <script id="shader-atmosphere-vs" type="x-shader/x-vertex">
     attribute vec3 aVertexPosition;
     attribute vec3 aVertexNormal;
@@ -175,6 +202,7 @@
 
     var shaderProgram;
     var atShaderProgram;
+    var boxShaderProgram;
 
     function initShaders() {
         //earth shader
@@ -184,6 +212,10 @@
         //atmosphere shader
         var atmosphereVertexShader = getShader(gl,"shader-atmosphere-vs");
         var atmosphereFragShader = getShader(gl,"shader-atmosphere-fs");
+
+        //box shadeer
+        var boxVertexShader = getShader(gl, "shader-box-vs");
+        var boxFragShader = getShader(gl, "shader-box-fs");
 
         shaderProgram = gl.createProgram();
         gl.attachShader(shaderProgram, vertexShader);
@@ -195,7 +227,13 @@
         gl.attachShader(atShaderProgram, atmosphereFragShader);
         gl.linkProgram(atShaderProgram);
 
-        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+        boxShaderProgram = gl.createProgram();
+        gl.attachShader(boxShaderProgram, boxVertexShader);
+        gl.attachShader(boxShaderProgram, boxFragShader);
+        gl.linkProgram(boxShaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS) || 
+                !gl.getProgramParameter(boxShaderProgram, gl.LINK_STATUS)){
             alert("Could not initialise shaders");
         }
 
@@ -232,6 +270,17 @@
         atShaderProgram.mvMatrixUniform = gl.getUniformLocation(atShaderProgram, "uMVMatrix");
         atShaderProgram.nMatrixUniform = gl.getUniformLocation(atShaderProgram, "uNMatrix");
 
+        gl.useProgram(boxShaderProgram);
+
+        boxShaderProgram.vertexPositionAttribute = gl.getAttribLocation(boxShaderProgram,"aVertexPosition");
+        gl.enableVertexAttribArray(boxShaderProgram.vertexPositionAttribute);
+
+        boxShaderProgram.vertexColorAttribute = gl.getAttribLocation(boxShaderProgram,"aVertexColor");
+        gl.enableVertexAttribArray(boxShaderProgram.vertexColorAttribute);
+
+        boxShaderProgram.pMatrixUniform = gl.getUniformLocation(boxShaderProgram,"uPMatrix");
+        boxShaderProgram.mvMatrixUniform = gl.getUniformLocation(boxShaderProgram,"uMVMatrix");
+
         gl.useProgram(shaderProgram);
     }
 
@@ -257,7 +306,7 @@
             handleLoadedTexture(moonTexture)
         }
 
-        moonTexture.image.src = "http://localhost/lesson11/world.jpg";
+        //moonTexture.image.src = "http://localhost/lesson11/world.jpg";
         moonTexture.image.src = "world.jpg";
     }
 
@@ -284,6 +333,9 @@
 
         gl.uniformMatrix4fv(atShaderProgram.pMatrixUniform, false, pMatrix);
         gl.uniformMatrix4fv(atShaderProgram.mvMatrixUniform, false, mvMatrix);
+
+        gl.uniformMatrix4fv(boxShaderProgram.pMatrixUniform, false, pMatrix);
+        gl.uniformMatrix4fv(boxShaderProgram.mvMatrixUniform, false, mvMatrix);
 
         var normalMatrix = mat3.create();
         mat4.toInverseMat3(mvMatrix, normalMatrix);
@@ -345,6 +397,11 @@
     var moonVertexTextureCoordBuffer;
     var moonVertexIndexBuffer;
 
+    var boxVertexPositionBuffer;
+    var boxVertexColorBuffer;
+
+    var testVertices;
+
     function initBuffers() {
         var latitudeBands = 30;
         var longitudeBands = 30;
@@ -372,8 +429,10 @@
                 normalData.push(x);
                 normalData.push(y);
                 normalData.push(z);
+
                 textureCoordData.push(u);
                 textureCoordData.push(v);
+
                 vertexPositionData.push(radius * x);
                 vertexPositionData.push(radius * y);
                 vertexPositionData.push(radius * z);
@@ -418,14 +477,42 @@
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexData), gl.STATIC_DRAW);
         moonVertexIndexBuffer.itemSize = 1;
         moonVertexIndexBuffer.numItems = indexData.length;
+
+
+        //for box
+        boxVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, boxVertexPositionBuffer);
+        vertices = [
+            1, 1, 0,
+            -1, 1, 0,
+            1, -1, 0,
+            -1, -1, 0
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
+        boxVertexPositionBuffer.itemSize = 3;
+        boxVertexPositionBuffer.numItems = 4;
+
+        boxVertexColorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, boxVertexColorBuffer);
+        var colors = [
+            1, 0, 0, 1,
+            0, 1, 0, 1,
+            0, 0, 1, 1,
+            1, 1, 1, 1
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.DYNAMIC_DRAW);
+        boxVertexColorBuffer.itemSize = 4;
+        boxVertexColorBuffer.numItems = 4;
+
     }
 
 
     function drawScene() {
+        gl.useProgram(shaderProgram);
         gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
 
-        //optional: clear the buffer
-        //gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        //we set our clearColor to be 0 0 0 0, so its essentially transparent.
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
         mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, pMatrix);
 
@@ -460,6 +547,8 @@
 
         mat4.identity(mvMatrix);
 
+        mvPushMatrix();
+
         mat4.translate(mvMatrix, [0, 0, -6]);
 
         mat4.multiply(mvMatrix, moonRotationMatrix);
@@ -482,6 +571,31 @@
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, moonVertexIndexBuffer);
         setMatrixUniforms();
         gl.drawElements(gl.TRIANGLES, moonVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+
+        //now for box?
+        gl.useProgram(boxShaderProgram);
+        //mvPopMatrix();
+
+        //mvPushMatrix();
+        mat4.translate(mvMatrix, [1, 1, 0]);
+
+        //need to bind this buffer
+        gl.bindBuffer(gl.ARRAY_BUFFER,boxVertexPositionBuffer);
+        gl.vertexAttribPointer(boxShaderProgram.vertexPositionAttribute,boxVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER,boxVertexColorBuffer);
+        gl.vertexAttribPointer(boxShaderProgram.vertexColorAttribute, boxVertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        setMatrixUniforms();
+
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, boxVertexPositionBuffer.numItems);
+
+        mat4.translate(mvMatrix, [-3, -2, 2]);
+        setMatrixUniforms();
+        gl.bindBuffer(gl.ARRAY_BUFFER, boxVertexPositionBuffer);
+        gl.vertexAttribPointer(boxShaderProgram.vertexPositionAttribute,boxVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, boxVertexPositionBuffer.numItems);
+        
+
+        mvPopMatrix();
     }
 
 
@@ -511,7 +625,7 @@
         initBuffers();
         initTexture();
 
-        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
         gl.enable(gl.DEPTH_TEST);
 
         document.onmousedown = handleMouseDown;
@@ -541,7 +655,19 @@
 <script>
 
 //globals
+
+//just holds the about me part
+var meObject = null;
+//all your friends by id
+var globalFriendDict = {};
+//all the locations so far by id
+var globalLocationDict = {};
+//all the places so far by id
+var globalPlaceDict = {};
+
+//the login response
 var fbLoginResponse = null;
+
 
 window.fbAsyncInit = function() {
     FB.init({
@@ -584,12 +710,149 @@ function fbLogin() {
          } else {
              alert("You denied me");
          }
-    });
+    },{scope:'user_about_me,friends_hometown,friends_location,friends_education_history,friends_work_history,friends_about_me,user_location,user_work_history,user_hometown,user_education_history'});
 }
 
 function removeAuthButton() {
     $j('#authBox').fadeOut();
 
+}
+
+function handleFriendsBack(response) {
+    console.log("Friends back");
+    console.log(response);
+
+    if(response.friends.paging && response.friends.paging.next)
+    {
+        var pagingLink = response.friends.paging.next;
+        //TODO: do the paging... I'm not sure if this is necessary :O
+    }
+
+    //loop through these friends
+    var friendList = response.friends.data;
+
+    //RATE LIMIT: fix not only first 3 friends
+    //for(var i = 0; i < friendList.length; i++)
+    for(var i =0; i < 10; i++)
+    {
+        var friend = friendList[i];
+
+        var fId = friend.id;
+        var fName = friend.name;
+
+        //store this in the global friend dict
+        globalFriendDict[fId] = friend;
+
+        //fire off a request for this friend, and a function to handle it
+        FB.api('/' + fId + '?fields=id,about,name,hometown,location,work,education',function(response){ handleFriendBack(response); });
+    }
+}
+
+function handleFriendBack(response){
+    console.log("Individual friend back");
+    console.log(response);
+
+    //if auth failed for some reason... like mid-session
+    //im sure theres a better way to do this
+    if(!response.name)
+    {
+        return;
+    }
+
+    var id = response.id;
+    //overwrite with this updated one with location and everything
+    globalFriendDict[id] = response;
+
+    //heres the deal. We will basically go ahead and directly graph
+    //this connection, except for when we have no location GPS, in which case
+    //we will go query that location GPS and add it to the todo list
+    if(response.hometown)
+    {
+        //add this location and either query or graph
+        var hometownId = response.hometown.id;
+
+        //if its already in here
+        if(globalLocationDict[hometownId])
+        {
+            //if we have this hometown location, just go graph it
+            if(globalLocationDict[hometownId].location)
+            {
+                graphFriendRelationship('hometown',response.id);
+            }
+            else //we are in the middle of a query and this will come back but not yet...
+            {
+                //add it to the todolist
+                globalLocationDict[hometownId].todoList.push( function() {
+                        graphFriendRelationship('hometown',response.id);
+                    });
+            }
+        }
+        else
+        {
+            //definitely not in there, so add it first
+            globalLocationDict[hometownId] = response.hometown;
+            globalLocationDict[hometownId].todoList = [];
+            //add our graph to the todolist
+            globalLocationDict[hometownId].todoList.push(function() {
+                    graphFriendRelationship('hometown',response.id);
+                });
+            //go query it
+            getLocationDetails(hometownId);
+        }
+    }//end of hometown check
+    else
+    {
+        console.log("Friend " + response.name + " didnt list their hometown!");
+    }
+}
+
+function getLocationDetails(locationId)
+{
+    //hopefully the fb api has the location already, in which case this is easy!
+    FB.api('/' + locationId, function(response) { locationDeetsCb(response); });
+}
+
+function locationDeetsCb(response)
+{
+    //dont overwrite our todolist but update everything else
+    //this is bad design :-/
+    var theId = response.id;
+    for(key in response)
+    {
+        //add in each piece of data
+        globalLocationDict[theId][key] = response[key];
+    }
+
+    //if theres no gps here
+    if(!response.location)
+    {
+        alert("A location came back with no gps coords! uh oh");
+    }
+    else
+    {
+        //go through our todolist and process them
+        var ourTodoList = globalLocationDict[theId].todoList;
+        for(var i = 0; i < ourTodoList.length; i++)
+        {
+            //call that function whatever it was
+            ourTodoList[i]();
+        }
+    }
+}
+
+function findGPS(locationId)
+{
+    //honestly there are two ways to do this. either via facebook graph search
+    //or via YQL which I have always liked
+
+}
+
+function graphFriendRelationship(relationshipType,friendId)
+{
+    console.log('graphing relationship of ' + relationshipType + ' between you and friend ' + globalFriendDict[friendId].name);
+    var locationId = globalFriendDict[friendId][relationshipType].id;
+    var locationGPS = globalLocationDict[locationId].location;
+    console.log("gps is " + locationGPS.latitude + " " + locationGPS.longitude);
 }
 
 function launchFbAvalanche() {
@@ -598,6 +861,16 @@ function launchFbAvalanche() {
 
 
     //do a query for your friends
+    FB.api('/me?fields=friends',handleFriendsBack);
+    //get yourself too
+    FB.api('/me',handleMeBack);
+}
+
+function handleMeBack(response){
+    console.log("me back");
+    console.log(response);
+    meObject = response;
+    //TODO: graph me connections
 }
 
 function askForAuth() {
