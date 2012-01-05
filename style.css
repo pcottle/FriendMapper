@@ -1,0 +1,130 @@
+html,body {
+
+    /**
+    background: #555a5f;
+    background: -moz-radial-gradient(center, ellipse cover, #555a5f 0%, #000000 90%);
+    background: -webkit-gradient(radial, center center, 0px, center center, 100%, color-stop(0%,#555a5f), color-stop(90%,#000000));
+    background: -webkit-radial-gradient(center, ellipse cover, #555a5f 0%,#000 90%);
+    background: -o-radial-gradient(center, ellipse cover, #555a5f 0%,#000000 90%);
+    background: -ms-radial-gradient(center, ellipse cover, #555a5f 0%,#000000 90%);
+    background: radial-gradient(center, ellipse cover, #555a5f 0%,#000000 90%);
+    */
+
+background-image: -webkit-gradient(
+    linear,
+        left bottom,
+            left top,
+                color-stop(0, rgb(0,102,204)),
+                        color-stop(0.5, rgb(0,0,0)),
+                            color-stop(1, rgb(0,102,204))
+                            );
+
+    background: -moz-radial-gradient(center, ellipse cover, #0066cc 0%, #000000 90%);
+    background: -webkit-gradient(radial, center center, 0px, center center, 100%, color-stop(0%,#0066cc), color-stop(90%,#000000));
+    background: -webkit-radial-gradient(center, ellipse cover, #0066cc 0%,#000 90%);
+    background: -o-radial-gradient(center, ellipse cover, #0066cc 0%,#000000 90%);
+    background: -ms-radial-gradient(center, ellipse cover, #0066cc 0%,#000000 90%);
+    background: radial-gradient(center, ellipse cover, #0066cc 0%,#000000 90%);
+
+    /*facebook blue?*/
+    background: -moz-radial-gradient(center, ellipse cover, #032CE3 0%, #000000 90%);
+    background: -webkit-gradient(radial, center center, 0px, center center, 100%, color-stop(0%,#032CE3), color-stop(90%,#000000));
+    background: -webkit-radial-gradient(center, ellipse cover, #032CE3 0%,#000 90%);
+    background: -o-radial-gradient(center, ellipse cover, #032CE3 0%,#000000 90%);
+    background: -ms-radial-gradient(center, ellipse cover, #032CE3 0%,#000000 90%);
+    background: radial-gradient(center, ellipse cover, #032CE3 0%,#000000 90%);
+ 
+    /*
+    background: blue;
+    background: -moz-radial-gradient(center, ellipse cover, blue 0%, #000000 90%);
+    background: -webkit-gradient(radial, center center, 0px, center center, 100%, color-stop(0%,blue), color-stop(90%,#000000));
+    background: -webkit-radial-gradient(center, ellipse cover, blue 0%,#000 90%);
+    background: -o-radial-gradient(center, ellipse cover, blue 0%,#000000 90%);
+    background: -ms-radial-gradient(center, ellipse cover, blue 0%,#000000 90%);
+    background: radial-gradient(center, ellipse cover, blue 0%,#000000 90%);
+    */
+    
+   
+    -webkit-perspective:600px;
+    font-family: 'Lato', Times, 'Times New Roman', serif;
+	font-size: 36px;
+	font-weight: 200;
+	letter-spacing: -0.02em;
+	
+	color: #eee;
+	
+}
+
+/****** FONT FACE -- Credit to Hakim El Hattab for this part, and the cubic bezier values ******/
+
+
+@font-face {
+	font-family: 'League Gothic';
+	src: url('league_gothic-webfont.ttf') format('truetype');
+	font-weight: normal;
+	font-style: normal;
+}
+
+h1, h2, h3, h4,a {
+	margin: 0 0 20px 0;
+	
+	color: #eee;
+	
+	font-family: 'League Gothic', sans-serif;
+	line-height: 0.9em;
+	letter-spacing: 0.02em;
+	
+	text-transform: uppercase;
+	text-shadow: 0px 0px 6px rgba(0,0,0,0.2);
+}
+
+h1 { font-size: 136px; 	}
+h2 { font-size: 76px;	}
+h3 { font-size: 56px;	}
+h4 { font-size: 36px;	}
+p { font-size: 20px; }
+
+h1.inverted,
+h2.inverted,
+h3.inverted,
+h4.inverted {
+	color: #fff;
+	text-shadow: 0px 0px 2px rgba(0,0,0,0.2);
+}
+
+h1 {
+	text-shadow: 0 1px 0 #ccc,
+               0 2px 0 #c9c9c9,
+               0 3px 0 #bbb,
+               0 4px 0 #b9b9b9,
+               0 5px 0 #aaa,
+               0 6px 1px rgba(0,0,0,.1),
+               0 0 5px rgba(0,0,0,.1),
+               0 1px 3px rgba(0,0,0,.3),
+               0 3px 5px rgba(0,0,0,.2),
+               0 5px 10px rgba(0,0,0,.25),
+               0 20px 20px rgba(0,0,0,.15);
+}
+
+.smaller {
+    font-size:100px;
+    text-align:center;
+    z-index:1;
+}
+
+.header {
+    margin-top:10px;
+    position:relative;
+    margin-left:auto;
+    margin-right:auto;
+    width:600px;
+    height:30px;
+}
+
+.smooth,.anArrow {
+   -webkit-transition: all 700ms cubic-bezier(0.260, 0.860, 0.440, 0.985);
+  -moz-transition: all 700ms cubic-bezier(0.260, 0.860, 0.440, 0.985);
+  -ms-transition: all 700ms cubic-bezier(0.260, 0.860, 0.440, 0.985);
+   -o-transition: all 700ms cubic-bezier(0.260, 0.860, 0.440, 0.985);
+   transition: all 700ms cubic-bezier(0.260, 0.860, 0.440, 0.985);
+}
