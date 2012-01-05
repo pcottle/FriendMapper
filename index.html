@@ -400,7 +400,7 @@ void main(void) {
     var boxVertexPositionBuffer;
     var boxVertexColorBuffer;
 
-    var testVertices;
+    var vertices;
 
     function initBuffers() {
         var latitudeBands = 30;
@@ -482,12 +482,54 @@ void main(void) {
         //for box
         boxVertexPositionBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, boxVertexPositionBuffer);
+
+        //go GPS calc
+        //mine
+        var lat = 37.221519;
+        var long = -121.977020;
+
+        //chicago
+        lat = 41.884151;
+        long = -87.632408;
+
+        //edge of Santo Domingo de Los Colardos
+        //lat = 0;
+        //long = -80.332408;
+
+        //other side of southern america
+        lat = 0;
+        long = -49.332408;
+
+
+        console.log("Lat is " + lat);
+        console.log("Long is " + long);
+
+        var latRad = lat * Math.PI / 180;
+        var longRad = long * Math.PI / 180;
+
+        var theta = Math.PI/2 - latRad;
+        var phi = Math.PI - longRad;
+
+        console.log("Phi is " + phi);
+        console.log("theta is " + theta);
+
+        var x = Math.cos(phi) * Math.sin(theta) * radius;
+        var y = Math.cos(theta);
+        var z = Math.sin(phi) * Math.sin(theta) * radius;
+
         vertices = [
-            1, 1, 0,
-            -1, 1, 0,
-            1, -1, 0,
-            -1, -1, 0
+            x, y, z,
+            x*2, y*2, z*2,
+            2, -2, 0,
+            2, 2, 0
         ];
+
+        var avertices = [
+            -4, 4, 0,
+            -4, -4, 0,
+            4, -4, 0,
+            4, 4, 0];
+
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
         boxVertexPositionBuffer.itemSize = 3;
         boxVertexPositionBuffer.numItems = 4;
@@ -496,8 +538,8 @@ void main(void) {
         gl.bindBuffer(gl.ARRAY_BUFFER, boxVertexColorBuffer);
         var colors = [
             1, 0, 0, 1,
-            0, 1, 0, 1,
-            0, 0, 1, 1,
+            1, 0, 0, 1,
+            1, 1, 1, 1,
             1, 1, 1, 1
         ];
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.DYNAMIC_DRAW);
@@ -577,7 +619,7 @@ void main(void) {
         //mvPopMatrix();
 
         //mvPushMatrix();
-        mat4.translate(mvMatrix, [1, 1, 0]);
+        //mat4.translate(mvMatrix, [1, 1, 0]);
 
         //need to bind this buffer
         gl.bindBuffer(gl.ARRAY_BUFFER,boxVertexPositionBuffer);
@@ -591,8 +633,9 @@ void main(void) {
         mat4.translate(mvMatrix, [-3, -2, 2]);
         setMatrixUniforms();
         gl.bindBuffer(gl.ARRAY_BUFFER, boxVertexPositionBuffer);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array(vertices));
         gl.vertexAttribPointer(boxShaderProgram.vertexPositionAttribute,boxVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, boxVertexPositionBuffer.numItems);
+        //gl.drawArrays(gl.TRIANGLE_STRIP, 0, boxVertexPositionBuffer.numItems);
         
 
         mvPopMatrix();
@@ -856,6 +899,9 @@ function graphFriendRelationship(relationshipType,friendId)
 }
 
 function launchFbAvalanche() {
+
+    //short circuit
+    return;
     console.log(fbLoginResponse);
     console.log("***********You're logged in!***************");
 
@@ -871,6 +917,21 @@ function handleMeBack(response){
     console.log(response);
     meObject = response;
     //TODO: graph me connections
+    if(response.hometown)
+    {
+       var hometownId = response.hometown.id;
+       globalLocationDict[response.hometown.id] = response.hometown;
+       globalLocationDict[hometownId].todoList = [];
+       globalLocationDict[hometownId].todoList.push(function() {
+           console.log("Your hometown back!!");
+           console.log(globalLocationDict[hometownId].location);
+        });
+       getLocationDetails(hometownId);
+    }
+    else
+    {
+        alert("You haven't listed a hometown on Facebook!");
+    }
 }
 
 function askForAuth() {
