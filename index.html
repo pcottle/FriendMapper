@@ -128,16 +128,28 @@ void main(void) {
 var gl;
 $j = jQuery.noConflict();
 
+//globals
+var arcList;
+
+
+var zoomAmount = -6;
+var testArc;
+var fromGps = {'latitude':37.221519,'longitude':-121.977020};
+var toGps = {'latitude':41,'longitude':115};
 
 /*****************CLASSES*******************/
 
-function arcObj(gpsFrom,gpsTo,baseRadius,startColor,endColor) {
+function arcObj(gpsFrom,gpsTo,baseRadius,startColor,endColor,thickness,maxHeight) {
+    this.alternateForStrips = false;
     this.gpsFrom = gpsFrom;
     this.gpsTo = gpsTo;
     this.baseRadius = baseRadius;
     this.startColor = startColor;
     this.endColor = endColor;
     this.isDoneAnimating = false;
+    this.thickness = thickness;
+    this.divisions = 500;
+    this.maxHeight = maxHeight;
 
     //find the vectors
     var pos1 = getPosFromGps(gpsFrom);
@@ -149,10 +161,14 @@ function arcObj(gpsFrom,gpsTo,baseRadius,startColor,endColor) {
 
     this.endVec = vec3.create();
     vec3.normalize(pos2,this.endVec);
+
+    this.crossVec = vec3.create();
+    vec3.cross(this.startVec,this.endVec,this.crossVec);
+    vec3.normalize(this.crossVec);
     
     //get the total amount of angle between
-    var dotProduct = vec3.dot(startVec,endVec);
-    var dotProductNormal = dotProduct / (vec3.length(startVec) * vec3.length(endVec));
+    var dotProduct = vec3.dot(this.startVec,this.endVec);
+    var dotProductNormal = dotProduct / (vec3.length(this.startVec) * vec3.length(this.endVec));
 
     this.totalTheta = Math.acos(dotProductNormal);
     this.currentTheta = 0;
@@ -164,12 +180,171 @@ function arcObj(gpsFrom,gpsTo,baseRadius,startColor,endColor) {
 
     this.myVertices = [];
     this.myNormals = [];
-    this.myColorBuffer = [];
-
+    this.myColors = [];
 
 }
 
+arcObj.prototype.animateArc = function() {
+    if(this.isDoneAnimating)
+    {
+        return true;
+    }
 
+    //ok so we will just compute the vertices for the current theta, add them, and then
+    //increment theta
+
+    //first get the current radius
+    var heightScaleAmount = Math.sin((this.currentTheta / this.totalTheta) * Math.PI);
+    var thisRadius = this.baseRadius * heightScaleAmount * this.maxHeight;
+    
+    //first multiply with cos and sin
+    var adjVec = vec3.create(this.startVec);
+    vec3.scale(adjVec,Math.cos(this.currentTheta));
+
+    var oppVec = vec3.create(this.endVec);
+    vec3.scale(oppVec,Math.sin(this.currentTheta));
+
+    //add these, normalize, scale by radius
+    var thisNormal = vec3.create();
+    vec3.add(adjVec,oppVec,thisNormal);
+    vec3.normalize(thisNormal);
+
+    var thisPoint = vec3.create();
+    vec3.scale(thisNormal,thisRadius,thisPoint);
+    
+    //also get the point that is "thickness" away in cross direction
+    var upperNormal = vec3.create(thisNormal);
+    var addVec = vec3.create();
+    vec3.scale(this.crossVec,this.thickness,addVec);
+
+    //add the addVec to the normal to get the upper point
+    vec3.add(upperNormal,addVec,upperNormal);
+    vec3.normalize(upperNormal);
+
+    //get the point also
+    var upperPoint = vec3.create(upperNormal);
+    vec3.scale(upperPoint,thisRadius);
+    
+    //add them in the right order!
+    var firstVertex;
+    var secondVertex;
+    var firstNormal;
+    var secondNormal;
+
+    //goddamnit webgl give me quad strips and not this shit!!!!
+    if(!this.alternateForStrips)
+    {
+        firstVertex = thisPoint;
+        secondVertex = upperPoint;
+        firstNormal = thisNormal;
+        secondNormal = upperNormal;
+    }
+    else
+    {
+        firstVertex = upperPoint;
+        secondVertex = thisPoint;
+        firstNormal = upperNormal;
+        secondNormal = thisNormal;
+    }
+    //wtf why dont i have to do this?
+    //this.alternateForStrips = !this.alternateForStrips;
+    
+    //these are our points!! yay. add them to the vertices and normals
+    this.myVertices.push(firstVertex[0],firstVertex[1],firstVertex[2]);
+    this.myNormals.push(firstNormal[0],firstNormal[1],firstNormal[2]);
+
+    //add these points too
+    this.myVertices.push(secondVertex[0],secondVertex[1],secondVertex[2]);
+    this.myNormals.push(secondNormal[0],secondNormal[1],secondNormal[2]);
+
+    //Colors!!
+    var thisColor = [];
+    for(var i = 0; i < 4; i++)
+    {
+        thisColor[i] = this.startColor[i] * Math.cos(this.currentTheta) + 
+                        this.endColor[i] * Math.sin(this.currentTheta);
+    }
+
+    //push the color twice
+    this.myColors.push(thisColor[0],thisColor[1],thisColor[2],thisColor[3]);
+    this.myColors.push(thisColor[0],thisColor[1],thisColor[2],thisColor[3]);
+
+    //increment theta?
+    this.currentTheta += this.totalTheta / this.divisions;
+    if(this.currentTheta > this.totalTheta)
+    {
+        //we are done animating
+        this.isDoneAnimating = true;
+        return true;
+    }
+    //still have more to go
+    return false;
+}
+
+
+arcObj.prototype.refreshBuffers = function () {
+    //buffer the data
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.myVertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.myVertices), gl.DYNAMIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.myNormalBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.myNormals), gl.DYNAMIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.myColorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.myColors), gl.DYNAMIC_DRAW);
+ 
+    //update the sizes
+    this.myVertexBuffer.itemSize = 3;
+    this.myVertexBuffer.numItems = this.myVertices.length / 3;
+
+    this.myColorBuffer.itemSize = 4;
+    this.myColorBuffer.numItems = this.myColors.length / 4;
+
+    this.myNormalBuffer.itemSize = 3;
+    this.myNormalBuffer.numItems = this.myNormals.length / 3;
+
+}
+
+arcObj.prototype.drawArcStrips = function() {
+    //we just need to bind our buffers and then draw!
+    gl.useProgram(blendShaderProgram);
+
+    //need to bind this vertex buffer
+    gl.bindBuffer(gl.ARRAY_BUFFER,this.myVertexBuffer);
+    gl.vertexAttribPointer(blendShaderProgram.vertexPositionAttribute,this.myVertexBuffer.itemSize, gl.FLOAT, false, 0, 0);
+    //need to bind this color buffer
+    gl.bindBuffer(gl.ARRAY_BUFFER,this.myColorBuffer);
+    gl.vertexAttribPointer(blendShaderProgram.vertexColorAttribute, this.myColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, this.myVertexBuffer.numItems);
+}
+
+
+/***************End Classes!*****************************/
+
+
+/********** Geometry Functions *******/
+
+function getPosFromGps(gpsCoords)
+{
+    //gives you the position on the sphere (sans radius) from a gps location
+    var lat = gpsCoords.latitude;
+    var long = gpsCoords.longitude;
+
+    var latRad = lat * Math.PI / 180;
+    var longRad = long * Math.PI / 180;
+
+    var theta = Math.PI/2 - latRad;
+    var phi = Math.PI - longRad;
+
+    var x = Math.cos(phi) * Math.sin(theta);
+    var y = Math.cos(theta);
+    var z = Math.sin(phi) * Math.sin(theta);
+
+    var returnVec = vec3.create([x,y,z]);
+    return returnVec;
+}
 
 function initGL(canvas) {
     try {
@@ -183,6 +358,16 @@ function initGL(canvas) {
     }
 }
 
+function onMouseWheel(event) {
+
+    event.preventDefault();
+
+    zoomAmount += event.wheelDeltaY * 0.003;
+
+
+
+}
+
 function resizeWindow()
 {
     //window sizes
@@ -194,8 +379,8 @@ function resizeWindow()
     vWidth = wWidth;
 
     //set the width to the canvas
-    $j('#lesson11-canvas').attr('width',String(vWidth) + 'px');
-    $j('#lesson11-canvas').attr('height',String(vHeight) + 'px');
+    $j('#earth-canvas').attr('width',String(vWidth) + 'px');
+    $j('#earth-canvas').attr('height',String(vHeight) + 'px');
 
     gl.viewportWidth = vWidth;
     gl.viewportHeight = vHeight; 
@@ -262,7 +447,6 @@ var lColorG = 0.8;
 var lColorB = 0.8;
 
 var earthShaderProgram;
-var atShaderProgram;
 var blendShaderProgram;
 
 function initShaders() {
@@ -282,11 +466,6 @@ function initShaders() {
     gl.attachShader(earthShaderProgram, vertexShader);
     gl.attachShader(earthShaderProgram, fragmentShader);
     gl.linkProgram(earthShaderProgram);
-
-    atShaderProgram = gl.createProgram();
-    gl.attachShader(atShaderProgram, atmosphereVertexShader);
-    gl.attachShader(atShaderProgram, atmosphereFragShader);
-    gl.linkProgram(atShaderProgram);
 
     blendShaderProgram = gl.createProgram();
     gl.attachShader(blendShaderProgram, blendVertexShader);
@@ -318,19 +497,7 @@ function initShaders() {
     earthShaderProgram.lightingDirectionUniform = gl.getUniformLocation(earthShaderProgram, "uLightingDirection");
     earthShaderProgram.directionalColorUniform = gl.getUniformLocation(earthShaderProgram, "uDirectionalColor");
 
-    //atmospheric shader!!
-    gl.useProgram(atShaderProgram);
-
-    atShaderProgram.vertexPositionAttribute = gl.getAttribLocation(atShaderProgram, "aVertexPosition");
-    gl.enableVertexAttribArray(atShaderProgram.vertexPositionAttribute);
-
-    atShaderProgram.vertexNormalAttribute = gl.getAttribLocation(atShaderProgram, "aVertexNormal");
-    gl.enableVertexAttribArray(atShaderProgram.vertexNormalAttribute);
-
-    atShaderProgram.pMatrixUniform = gl.getUniformLocation(atShaderProgram, "uPMatrix");
-    atShaderProgram.mvMatrixUniform = gl.getUniformLocation(atShaderProgram, "uMVMatrix");
-    atShaderProgram.nMatrixUniform = gl.getUniformLocation(atShaderProgram, "uNMatrix");
-
+    //our arcs
     gl.useProgram(blendShaderProgram);
 
     blendShaderProgram.vertexPositionAttribute = gl.getAttribLocation(blendShaderProgram,"aVertexPosition");
@@ -391,9 +558,6 @@ function mvPopMatrix() {
 function setMatrixUniforms() {
     gl.uniformMatrix4fv(earthShaderProgram.pMatrixUniform, false, pMatrix);
     gl.uniformMatrix4fv(earthShaderProgram.mvMatrixUniform, false, mvMatrix);
-
-    gl.uniformMatrix4fv(atShaderProgram.pMatrixUniform, false, pMatrix);
-    gl.uniformMatrix4fv(atShaderProgram.mvMatrixUniform, false, mvMatrix);
 
     gl.uniformMatrix4fv(blendShaderProgram.pMatrixUniform, false, pMatrix);
     gl.uniformMatrix4fv(blendShaderProgram.mvMatrixUniform, false, mvMatrix);
@@ -494,9 +658,6 @@ function initEarthBuffers() {
             var zSquared = Math.pow(z,2);
             var mag = Math.sqrt(xSquared + ySquared + zSquared);
 
-            v = (y/(2*mag) + 0.5);
-
-
             normalData.push(x);
             normalData.push(y);
             normalData.push(z);
@@ -573,7 +734,7 @@ function initArcBuffers() {
     console.log("theta is " + theta);
 
     var x = Math.cos(phi) * Math.sin(theta) * radius;
-    var y = Math.cos(theta);
+    var y = Math.cos(theta) * radius;
     var z = Math.sin(phi) * Math.sin(theta) * radius;
 
     vertices = [
@@ -624,6 +785,13 @@ function drawScene() {
     refreshArcBuffers();
     drawArcs();
 
+    setMatrixUniforms();
+    gl.useProgram(blendShaderProgram);
+
+    testArc.animateArc();
+    testArc.refreshBuffers();
+    testArc.drawArcStrips();
+
 }
 
 function cameraPerspectiveClear() {
@@ -672,7 +840,7 @@ function translateAndRotate() {
 
     mvPushMatrix();
 
-    mat4.translate(mvMatrix, [0, 0, -7]);
+    mat4.translate(mvMatrix, [0, 0, zoomAmount]);
 
     mat4.multiply(mvMatrix, earthRotationMatrix);
     setMatrixUniforms();
@@ -687,14 +855,12 @@ function drawEarth() {
 
     gl.bindBuffer(gl.ARRAY_BUFFER, earthVertexPositionBuffer);
     gl.vertexAttribPointer(earthShaderProgram.vertexPositionAttribute, earthVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
-    gl.vertexAttribPointer(atShaderProgram.vertexPositionAttribute, earthVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, earthVertexTextureCoordBuffer);
     gl.vertexAttribPointer(earthShaderProgram.textureCoordAttribute, earthVertexTextureCoordBuffer.itemSize, gl.FLOAT, false, 0, 0);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, earthVertexNormalBuffer);
     gl.vertexAttribPointer(earthShaderProgram.vertexNormalAttribute, earthVertexNormalBuffer.itemSize, gl.FLOAT, false, 0, 0);
-    gl.vertexAttribPointer(atShaderProgram.vertexNormalAttribute, earthVertexNormalBuffer.itemSize, gl.FLOAT, false, 0, 0);
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, earthVertexIndexBuffer);
     gl.drawElements(gl.TRIANGLES, earthVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
@@ -713,7 +879,7 @@ function drawArcs() {
     gl.vertexAttribPointer(blendShaderProgram.vertexColorAttribute, boxVertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
     setMatrixUniforms();
 
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, boxVertexPositionBuffer.numItems);
+    //gl.drawArrays(gl.TRIANGLE_STRIP, 0, boxVertexPositionBuffer.numItems);
 }
 
 
@@ -735,7 +901,7 @@ function tick() {
 
 
 function webGLStart() {
-    var canvas = document.getElementById("lesson11-canvas");
+    var canvas = document.getElementById("earth-canvas");
     initGL(canvas);
     initShaders();
     initEarthBuffers();
@@ -749,15 +915,21 @@ function webGLStart() {
     document.onmouseup = handleMouseUp;
     document.onmousemove = handleMouseMove;
 
+
+    testArc = new arcObj(fromGps,toGps,2.1,[1,1,1,1],[0,0,1,1],0.05);
+
     tick();
 }
 
 $j(document).ready(function(){
     webGLStart();
-    $j(window).resize(function(){resizeWindow();});
 
+    $j(window).resize(function(){resizeWindow();});
     //initial resize
     resizeWindow();
+
+    var container = document.getElementById('earth-canvas');
+    container.addEventListener('mousewheel',onMouseWheel,false);
 
 });
 
@@ -771,7 +943,7 @@ $j(document).ready(function(){
  <div id="fb-root"></div>
 <script>
 
-//globals
+//fblobals
 
 //just holds the about me part
 var meObject = null;
@@ -975,7 +1147,7 @@ function graphFriendRelationship(relationshipType,friendId)
 function launchFbAvalanche() {
 
     //short circuit
-    return;
+    //return;
     console.log(fbLoginResponse);
     console.log("***********You're logged in!***************");
 
@@ -1036,7 +1208,7 @@ function initFacebook(){
 
 </script>
 
-    <canvas id="lesson11-canvas" style="border: none;" width="500px" height="500px"></canvas>
+    <canvas id="earth-canvas" style="border: none;" width="500px" height="500px"></canvas>
 
 </body>
 
