@@ -52,6 +52,9 @@ background-image: -webkit-gradient(
 	letter-spacing: -0.02em;
 	
 	color: #eee;
+    overflow:hidden;
+    padding:0px;
+    margin:0px;
 	
 }
 

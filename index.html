@@ -1,7 +1,7 @@
 <html>
 
 <head>
-<title>Learning WebGL &mdash; lesson 11</title>
+<title> Friend Mapper!</title>
 <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
 
 <link href="style.css" rel="stylesheet" type="text/css"/>
@@ -147,7 +147,7 @@ void main(void) {
         var wWidth = $j(window).width();
 
         //viewport sizes
-        vHeight = wHeight * .8;
+        vHeight = wHeight;
         vWidth = wWidth;
 
         //set the width to the canvas
@@ -199,6 +199,24 @@ void main(void) {
         return shader;
     }
 
+    //global colors
+    var ambientR = 0.5;
+    var ambientG = 0.7;
+    var ambientB = 1.2;
+
+    var lDirectionX = -1.0;
+    var lDirectionY = -1.0;
+    var lDirectionZ = -1.0;
+
+    var lightingDirection = [
+        lDirectionX,
+        lDirectionY,
+        lDirectionZ
+    ];
+
+    var lColorR = 0.8;
+    var lColorG = 0.8;
+    var lColorB = 0.8;
 
     var shaderProgram;
     var atShaderProgram;
@@ -376,7 +394,7 @@ void main(void) {
         var newX = event.clientX;
         var newY = event.clientY;
 
-        var deltaX = newX - lastMouseX
+        var deltaX = newX - lastMouseX;
         var newRotationMatrix = mat4.create();
         mat4.identity(newRotationMatrix);
         mat4.rotate(newRotationMatrix, degToRad(deltaX / 10), [0, 1, 0]);
@@ -423,8 +441,17 @@ void main(void) {
                 var x = cosPhi * sinTheta;
                 var y = cosTheta;
                 var z = sinPhi * sinTheta;
+
                 var u = 1 - (longNumber / longitudeBands);
                 var v = 1 - (latNumber / latitudeBands);
+
+                var xSquared = Math.pow(x,2);
+                var ySquared = Math.pow(y,2);
+                var zSquared = Math.pow(z,2);
+                var mag = Math.sqrt(xSquared + ySquared + zSquared);
+
+                v = (y/(2*mag) + 0.5);
+
 
                 normalData.push(x);
                 normalData.push(y);
@@ -500,6 +527,17 @@ void main(void) {
         lat = 0;
         long = -49.332408;
 
+        //starting to check out lat thing
+        lat = 36;
+        //lat = 60;
+
+        //lat = 54.5 + 15;
+        //lat = 60 + 15.5;
+        long = 0;
+
+        //hmmm
+        //lat = 13.5;
+        //long = -90;
 
         console.log("Lat is " + lat);
         console.log("Long is " + long);
@@ -550,6 +588,17 @@ void main(void) {
 
 
     function drawScene() {
+
+        cameraAndPerspective();
+        lighting();
+        translateAndRotate();
+        drawEarth();
+        drawArcs();
+
+    }
+
+    function cameraAndPerspective() {
+
         gl.useProgram(shaderProgram);
         gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
 
@@ -557,23 +606,22 @@ void main(void) {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
         mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, pMatrix);
+    }
 
-        var lighting = document.getElementById("lighting").checked;
+    function lighting() {
+
+        //legacy
+        var lighting = true;
         gl.uniform1i(shaderProgram.useLightingUniform, lighting);
 
         if (lighting) {
             gl.uniform3f(
                 shaderProgram.ambientColorUniform,
-                parseFloat(document.getElementById("ambientR").value),
-                parseFloat(document.getElementById("ambientG").value),
-                parseFloat(document.getElementById("ambientB").value)
+                ambientR,
+                ambientG,
+                ambientB
             );
 
-            var lightingDirection = [
-                parseFloat(document.getElementById("lightDirectionX").value),
-                parseFloat(document.getElementById("lightDirectionY").value),
-                parseFloat(document.getElementById("lightDirectionZ").value)
-            ];
             var adjustedLD = vec3.create();
             vec3.normalize(lightingDirection, adjustedLD);
             vec3.scale(adjustedLD, -1);
@@ -581,19 +629,27 @@ void main(void) {
 
             gl.uniform3f(
                 shaderProgram.directionalColorUniform,
-                parseFloat(document.getElementById("directionalR").value),
-                parseFloat(document.getElementById("directionalG").value),
-                parseFloat(document.getElementById("directionalB").value)
+                lColorR,
+                lColorG,
+                lColorB
             );
         }
+
+    }
+
+    function translateAndRotate() {
 
         mat4.identity(mvMatrix);
 
         mvPushMatrix();
 
-        mat4.translate(mvMatrix, [0, 0, -6]);
+        mat4.translate(mvMatrix, [0, 0, -7]);
 
         mat4.multiply(mvMatrix, moonRotationMatrix);
+        setMatrixUniforms();
+    }
+
+    function drawEarth() {
 
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, moonTexture);
@@ -611,15 +667,14 @@ void main(void) {
         gl.vertexAttribPointer(atShaderProgram.vertexNormalAttribute, moonVertexNormalBuffer.itemSize, gl.FLOAT, false, 0, 0);
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, moonVertexIndexBuffer);
-        setMatrixUniforms();
         gl.drawElements(gl.TRIANGLES, moonVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+
+    }
+
+    function drawArcs() {
 
         //now for box?
         gl.useProgram(boxShaderProgram);
-        //mvPopMatrix();
-
-        //mvPushMatrix();
-        //mat4.translate(mvMatrix, [1, 1, 0]);
 
         //need to bind this buffer
         gl.bindBuffer(gl.ARRAY_BUFFER,boxVertexPositionBuffer);
@@ -629,16 +684,6 @@ void main(void) {
         setMatrixUniforms();
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, boxVertexPositionBuffer.numItems);
-
-        mat4.translate(mvMatrix, [-3, -2, 2]);
-        setMatrixUniforms();
-        gl.bindBuffer(gl.ARRAY_BUFFER, boxVertexPositionBuffer);
-        gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array(vertices));
-        gl.vertexAttribPointer(boxShaderProgram.vertexPositionAttribute,boxVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
-        //gl.drawArrays(gl.TRIANGLE_STRIP, 0, boxVertexPositionBuffer.numItems);
-        
-
-        mvPopMatrix();
     }
 
 
@@ -647,17 +692,15 @@ void main(void) {
     {
         var rMatrix = mat4.create();
         mat4.identity(rMatrix);
-        mat4.rotate(rMatrix,degToRad(0.2),[0,1,0]);
+        mat4.rotate(rMatrix,degToRad(0.1),[0,1,0]);
 
         mat4.multiply(rMatrix,moonRotationMatrix,moonRotationMatrix);
-
     }
 
     function tick() {
         requestAnimFrame(tick);
         drawScene();
         slowRotate();
-
     }
 
 
@@ -905,7 +948,6 @@ function launchFbAvalanche() {
     console.log(fbLoginResponse);
     console.log("***********You're logged in!***************");
 
-
     //do a query for your friends
     FB.api('/me?fields=friends',handleFriendsBack);
     //get yourself too
@@ -964,40 +1006,6 @@ function initFacebook(){
 </script>
 
     <canvas id="lesson11-canvas" style="border: none;" width="500px" height="500px"></canvas>
-
-    <input type="checkbox" id="lighting" checked /> Use lighting<br/>
-    <br/>
-
-    <h4>Directional light:</h4>
-
-    <table style="border: 0; padding: 10px;">
-        <tr>
-            <td><b>Direction:</b>
-            <td>X: <input type="text" id="lightDirectionX" value="-1.0" />
-            <td>Y: <input type="text" id="lightDirectionY" value="-1.0" />
-            <td>Z: <input type="text" id="lightDirectionZ" value="-1.0" />
-        </tr>
-        <tr>
-            <td><b>Colour:</b>
-            <td>R: <input type="text" id="directionalR" value="0.8" />
-            <td>G: <input type="text" id="directionalG" value="0.8" />
-            <td>B: <input type="text" id="directionalB" value="0.8" />
-        </tr>
-    </table>
-
-
-    <h4>Ambient light:</h4>
-
-    <table style="border: 0; padding: 10px;">
-        <tr>
-            <td><b>Colour:</b>
-            <td>R: <input type="text" id="ambientR" value="0.5" />
-            <td>G: <input type="text" id="ambientG" value="0.7" />
-            <td>B: <input type="text" id="ambientB" value="1.2" />
-        </tr>
-    </table>
-    <br/>
-
 
 </body>
 
