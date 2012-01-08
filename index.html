@@ -129,13 +129,14 @@ var gl;
 $j = jQuery.noConflict();
 
 //globals
-var arcList;
+var animateArcList = [];
+var drawArcList = [];
 
 
 var zoomAmount = -6;
 var testArc;
 var fromGps = {'latitude':37.221519,'longitude':-121.977020};
-var toGps = {'latitude':41,'longitude':115};
+var toGps = {'latitude':37.22159,'longitude':-76};
 
 /*****************CLASSES*******************/
 
@@ -148,8 +149,13 @@ function arcObj(gpsFrom,gpsTo,baseRadius,startColor,endColor,thickness,maxHeight
     this.endColor = endColor;
     this.isDoneAnimating = false;
     this.thickness = thickness;
-    this.divisions = 500;
+    this.divisions = 25;
     this.maxHeight = maxHeight;
+
+    //animate stuff
+    this.animateStep = 0;
+    this.totalAnimateSteps = null;
+    this.animateVertexAmount = 0;
 
     //find the vectors
     var pos1 = getPosFromGps(gpsFrom);
@@ -184,101 +190,175 @@ function arcObj(gpsFrom,gpsTo,baseRadius,startColor,endColor,thickness,maxHeight
 
 }
 
+arcObj.prototype.initAnimate = function () {
+    //ok so the initial animate thing is dependent on the number of divisions
+    this.totalAnimateSteps = this.divisions;
+    this.animateStep = 0;
+
+    //and then we increment the number of triangles to draw as we are animating
+
+}
+
 arcObj.prototype.animateArc = function() {
+    //check in case we got called badly
     if(this.isDoneAnimating)
     {
         return true;
     }
+    //ok so i did a bit of refactoring here. animateArc doesn't do any of the complicated
+    //math to generate the points, it just decides which points to display.
 
-    //ok so we will just compute the vertices for the current theta, add them, and then
-    //increment theta
+    //ok so basically we just have two triangles per division, so update that number
+    this.animateStep += 1;
+    this.animateVertexAmount = this.animateStep * 2;
 
-    //first get the current radius
-    var heightScaleAmount = Math.sin((this.currentTheta / this.totalTheta) * Math.PI);
-    var thisRadius = this.baseRadius * heightScaleAmount * this.maxHeight;
-    
-    //first multiply with cos and sin
-    var adjVec = vec3.create(this.startVec);
-    vec3.scale(adjVec,Math.cos(this.currentTheta));
-
-    var oppVec = vec3.create(this.endVec);
-    vec3.scale(oppVec,Math.sin(this.currentTheta));
-
-    //add these, normalize, scale by radius
-    var thisNormal = vec3.create();
-    vec3.add(adjVec,oppVec,thisNormal);
-    vec3.normalize(thisNormal);
-
-    var thisPoint = vec3.create();
-    vec3.scale(thisNormal,thisRadius,thisPoint);
-    
-    //also get the point that is "thickness" away in cross direction
-    var upperNormal = vec3.create(thisNormal);
-    var addVec = vec3.create();
-    vec3.scale(this.crossVec,this.thickness,addVec);
-
-    //add the addVec to the normal to get the upper point
-    vec3.add(upperNormal,addVec,upperNormal);
-    vec3.normalize(upperNormal);
-
-    //get the point also
-    var upperPoint = vec3.create(upperNormal);
-    vec3.scale(upperPoint,thisRadius);
-    
-    //add them in the right order!
-    var firstVertex;
-    var secondVertex;
-    var firstNormal;
-    var secondNormal;
-
-    //goddamnit webgl give me quad strips and not this shit!!!!
-    if(!this.alternateForStrips)
+    //if we are done
+    if(this.animateStep == this.totalAnimateSteps)
     {
-        firstVertex = thisPoint;
-        secondVertex = upperPoint;
-        firstNormal = thisNormal;
-        secondNormal = upperNormal;
-    }
-    else
-    {
-        firstVertex = upperPoint;
-        secondVertex = thisPoint;
-        firstNormal = upperNormal;
-        secondNormal = thisNormal;
-    }
-    //wtf why dont i have to do this?
-    //this.alternateForStrips = !this.alternateForStrips;
-    
-    //these are our points!! yay. add them to the vertices and normals
-    this.myVertices.push(firstVertex[0],firstVertex[1],firstVertex[2]);
-    this.myNormals.push(firstNormal[0],firstNormal[1],firstNormal[2]);
-
-    //add these points too
-    this.myVertices.push(secondVertex[0],secondVertex[1],secondVertex[2]);
-    this.myNormals.push(secondNormal[0],secondNormal[1],secondNormal[2]);
-
-    //Colors!!
-    var thisColor = [];
-    for(var i = 0; i < 4; i++)
-    {
-        thisColor[i] = this.startColor[i] * Math.cos(this.currentTheta) + 
-                        this.endColor[i] * Math.sin(this.currentTheta);
-    }
-
-    //push the color twice
-    this.myColors.push(thisColor[0],thisColor[1],thisColor[2],thisColor[3]);
-    this.myColors.push(thisColor[0],thisColor[1],thisColor[2],thisColor[3]);
-
-    //increment theta?
-    this.currentTheta += this.totalTheta / this.divisions;
-    if(this.currentTheta > this.totalTheta)
-    {
-        //we are done animating
+        //set the right flag and return
         this.isDoneAnimating = true;
         return true;
     }
     //still have more to go
     return false;
+
+}
+
+arcObj.prototype.fixHeightAndWidth = function () {
+    //adjust the maxheight and width depending on how long this thing is
+
+    //basically, this is a function of theta. we scale width and height
+    //depending on how short or long the thing is
+
+    //ok so basically, we need to scale height up if its bigger and scale it down if
+    //its smaller
+
+    //get a number between 0 and 1 for how "long" the arc is
+    //the max theta between two vectors on a plane is just pi
+    var ourModifier = (this.totalTheta / (Math.PI));
+
+    //now scale between -1 and 1
+    var ourDelta = (ourModifier - 0.5) * 2;
+
+    //now scale height
+    this.maxHeight = this.maxHeight * 0.05 + this.maxHeight * ourModifier;
+
+    //fix our width too
+    this.thickness = this.thickness * 0.1 + this.thickness * ourModifier * 2;
+
+    //also our divisions
+    this.divisions = Math.round(200 * ourModifier) + 2;
+
+}
+
+arcObj.prototype.buildArc = function () {
+    //this method generates the points and does some house keeping
+    this.fixHeightAndWidth();
+    this.generateArcPoints();
+    //refresh buffers?
+    this.refreshBuffers();
+    this.initAnimate();
+}
+
+arcObj.prototype.generateArcPoints = function () {
+
+    //the idea is that we want to loop through theta with the correct number of
+    //divisions and generate those points
+    for(var genStep = 0; genStep < this.divisions; genStep++)
+    {
+        //stupid namespace things @_____@
+        this.currentTheta = genStep * this.totalTheta / this.divisions;
+
+        var progress = genStep / (this.divisions - 1);
+
+        //ok so we will just compute the vertices for the current theta, add them, and then
+
+        //first get the current radius
+        var heightScaleAmount = Math.sin(progress * Math.PI);
+        var thisRadius = this.baseRadius + heightScaleAmount * this.maxHeight;
+        
+        //first scale appropriately
+        var adjVec = vec3.create(this.startVec);
+        //these look way better with linear interp and sine-based height
+        vec3.scale(adjVec,(1-progress));
+
+        var oppVec = vec3.create(this.endVec);
+        vec3.scale(oppVec,progress);
+
+        //add these, normalize, scale by radius
+        var thisNormal = vec3.create();
+        vec3.add(adjVec,oppVec,thisNormal);
+        vec3.normalize(thisNormal);
+
+        var thisPoint = vec3.create();
+        vec3.scale(thisNormal,thisRadius,thisPoint);
+        
+        //also get the point that is "thickness" away in cross direction
+        var upperNormal = vec3.create(thisNormal);
+        var addVec = vec3.create();
+        vec3.scale(this.crossVec,this.thickness * heightScaleAmount,addVec);
+
+        //add the addVec to the normal to get the upper point
+        vec3.add(upperNormal,addVec,upperNormal);
+        vec3.normalize(upperNormal);
+
+        //get the point also
+        var upperPoint = vec3.create(upperNormal);
+        vec3.scale(upperPoint,thisRadius);
+        
+        //add them in the right order!
+        var firstVertex;
+        var secondVertex;
+        var firstNormal;
+        var secondNormal;
+
+        //goddamnit webgl give me quad strips and not this shit!!!!
+        if(!this.alternateForStrips)
+        {
+            firstVertex = thisPoint;
+            secondVertex = upperPoint;
+            firstNormal = thisNormal;
+            secondNormal = upperNormal;
+        }
+        else
+        {
+            firstVertex = upperPoint;
+            secondVertex = thisPoint;
+            firstNormal = upperNormal;
+            secondNormal = thisNormal;
+        }
+        //wtf why dont i have to do this?
+        //this.alternateForStrips = !this.alternateForStrips;
+        
+        //these are our points!! yay. add them to the vertices and normals
+        this.myVertices.push(firstVertex[0],firstVertex[1],firstVertex[2]);
+        this.myNormals.push(firstNormal[0],firstNormal[1],firstNormal[2]);
+
+        //add these points too
+        this.myVertices.push(secondVertex[0],secondVertex[1],secondVertex[2]);
+        this.myNormals.push(secondNormal[0],secondNormal[1],secondNormal[2]);
+
+        //Colors!!
+        var thisColor = [];
+        for(var i = 0; i < 4; i++)
+        {
+            thisColor[i] = this.startColor[i] * Math.cos(this.currentTheta) + 
+                            this.endColor[i] * Math.sin(this.currentTheta);
+            //try out linear?
+            thisColor[i] = this.startColor[i] * (1-progress) +
+                            this.endColor[i] * (progress);
+        }
+
+        //push the color twice
+        this.myColors.push(thisColor[0],thisColor[1],thisColor[2],thisColor[3]);
+        this.myColors.push(thisColor[0],thisColor[1],thisColor[2],thisColor[3]);
+
+    }
+    //end of loop, we have filled up all of the arrays
+    //now we return and selectively draw to animate
+
+    //need to refresh our buffers
+    //this.refreshBuffers();
 }
 
 
@@ -308,7 +388,6 @@ arcObj.prototype.refreshBuffers = function () {
 
 arcObj.prototype.drawArcStrips = function() {
     //we just need to bind our buffers and then draw!
-    gl.useProgram(blendShaderProgram);
 
     //need to bind this vertex buffer
     gl.bindBuffer(gl.ARRAY_BUFFER,this.myVertexBuffer);
@@ -317,7 +396,7 @@ arcObj.prototype.drawArcStrips = function() {
     gl.bindBuffer(gl.ARRAY_BUFFER,this.myColorBuffer);
     gl.vertexAttribPointer(blendShaderProgram.vertexColorAttribute, this.myColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
 
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, this.myVertexBuffer.numItems);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, this.animateVertexAmount);
 }
 
 
@@ -789,9 +868,62 @@ function drawScene() {
     gl.useProgram(blendShaderProgram);
 
     testArc.animateArc();
-    testArc.refreshBuffers();
     testArc.drawArcStrips();
 
+    gl.useProgram(blendShaderProgram);
+    //animate all the arcs if necessary
+    for(var i = 0; i < animateArcList.length; i++)
+    {
+        var response = animateArcList[i].animateArc();
+        //if the arc is done animating, remove it
+        if(response)
+        {
+            //remove from this list
+            animateArcList.splice(i,1);
+            i--;
+        }
+    }
+
+    for(var i = 0; i < drawArcList.length; i++)
+    {
+        //draw the arc
+        drawArcList[i].drawArcStrips();
+    }
+
+}
+
+function randomGps() {
+    var lat = Math.random() * 180 + -90;
+    var long = Math.random() * 360 - 180;
+
+    return {'latitude':lat,'longitude':long};
+
+}
+
+function rubberBandBall() {
+    for(var i = 0; i < 50; i++) { generateRandomArc(); }
+}
+
+function generateRandomArc() {
+    var fromGps = randomGps();
+    var toGps = randomGps();
+
+    var thisArc = new arcObj(fromGps,toGps,2,[0,0,1,1],[1,1,1,1],0.04,0.1);
+    thisArc.buildArc();
+
+    animateArcList.push(thisArc);
+    drawArcList.push(thisArc);
+}
+
+function testBigArc() {
+    var asd = -80;
+    var fromGps = {'latitude':0,'longitude':asd};
+    var toGps = {'latitude':0,'longitude':90};
+
+    var thisArc = new arcObj(fromGps,toGps,2,[0,1,0,1],[0,0,1,1],0.04,0.1);
+    thisArc.buildArc();
+    animateArcList.push(thisArc);
+    drawArcList.push(thisArc);
 }
 
 function cameraPerspectiveClear() {
@@ -915,8 +1047,8 @@ function webGLStart() {
     document.onmouseup = handleMouseUp;
     document.onmousemove = handleMouseMove;
 
-
-    testArc = new arcObj(fromGps,toGps,2.1,[1,1,1,1],[0,0,1,1],0.05);
+    testArc = new arcObj(fromGps,toGps,2,[1,1,1,1],[0,0,1,1],0.05,0.1);
+    testArc.buildArc();
 
     tick();
 }
@@ -1021,8 +1153,8 @@ function handleFriendsBack(response) {
     var friendList = response.friends.data;
 
     //RATE LIMIT: fix not only first 3 friends
-    //for(var i = 0; i < friendList.length; i++)
-    for(var i =0; i < 10; i++)
+    for(var i = 0; i < friendList.length; i++)
+    //for(var i =0; i < 10; i++)
     {
         var friend = friendList[i];
 
@@ -1142,6 +1274,27 @@ function graphFriendRelationship(relationshipType,friendId)
     var locationId = globalFriendDict[friendId][relationshipType].id;
     var locationGPS = globalLocationDict[locationId].location;
     console.log("gps is " + locationGPS.latitude + " " + locationGPS.longitude);
+
+
+    //if we have a hometown
+    if(meObject.hometown && meObject.hometown.id && globalLocationDict[meObject.hometown.id].location)
+    {
+        var fromGps = globalLocationDict[meObject.hometown.id].location;
+        var toGps = locationGPS;
+        //make a new arc and add it
+        var thisArc = new arcObj(fromGps,toGps,2,[0,0,1,1],[1,1,1,1],0.04,0.1);
+        //do all the math
+        thisArc.buildArc();
+
+        //we will animate
+        animateArcList.push(thisArc);
+        //we want to draw it too
+        drawArcList.push(thisArc);
+    }
+    else
+    {
+        console.log('no hometown yet');
+    }
 }
 
 function launchFbAvalanche() {
