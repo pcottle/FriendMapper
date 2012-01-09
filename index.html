@@ -201,8 +201,10 @@ arcObj.prototype.initAnimate = function () {
     this.totalAnimateSteps = this.divisions;
     this.animateStep = 0;
 
-    //and then we increment the number of triangles to draw as we are animating
+}
 
+arcObj.prototype.retractArc = function () {
+    this.animateVertexAmount = 0;
 }
 
 arcObj.prototype.animateArc = function() {
@@ -500,7 +502,7 @@ function getUniqueColorObject()
 
 function initGL(canvas) {
     try {
-        gl = canvas.getContext("experimental-webgl");
+        gl = canvas.getContext("experimental-webgl",{preserveDrawingBuffer:true});
         gl.viewportWidth = canvas.width;
         gl.viewportHeight = canvas.height;
     } catch (e) {
@@ -522,7 +524,8 @@ function onMouseWheel(event) {
 
 function resizeWindow()
 {
-    //TODO: fix the width and height of the frame buffer
+    //fix other frame buffer size...?
+    initOtherFrameBuffer();
 
     //window sizes
     var wHeight = $j(window).height();
@@ -772,6 +775,15 @@ var earthRotationMatrix = mat4.create();
 mat4.identity(earthRotationMatrix);
 
 function handleMouseDown(event) {
+    event.preventDefault();
+    if(event.which == 1)
+    {
+        //primary click
+        mouseClickPick(event);
+        return;
+    }
+
+    //otherwise, move with mouse
     mouseDown = true;
     lastMouseX = event.clientX;
     lastMouseY = event.clientY;
@@ -952,41 +964,64 @@ function initArcBuffers() {
 
 }
 
-function refreshArcBuffers()
-{
-    gl.bindBuffer(gl.ARRAY_BUFFER, boxVertexPositionBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
-    boxVertexPositionBuffer.itemSize = 3;
-    boxVertexPositionBuffer.numItems = vertices.length / 3;
+function mouseClickPick(event) {
+    //get the coordinates on our canvas
+    //console.log(event.clientX + " and " + event.clientY);
+    var x = event.clientX;
+    var y = event.clientY;
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, boxVertexColorBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.DYNAMIC_DRAW);
-    boxVertexColorBuffer.itemSize = 4;
-    boxVertexColorBuffer.numItems = colors.length / 4;
+    //flip y
+    y = gl.viewportHeight - y;
+
+    //real quick, render the frame but in pick mode into another buffer!
+    gl.bindFramebuffer(gl.FRAMEBUFFER, otherFramebuffer);
+    drawSceneIntoOtherBuffer();
+
+    //go get the pixel data from the frame buffer
+    var pixelValues = new Uint8Array(4);
+    gl.readPixels(x,y,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixelValues);
+
+    //now switch back
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    console.log("R:" + pixelValues[0] + " G:" + pixelValues[1] + " B:" + pixelValues[2]);
+
+    var r = pixelValues[0]; var rS = zeroPad(r,3);
+    var g = pixelValues[1]; var gS = zeroPad(g,3);
+    var b = pixelValues[2]; var bS = zeroPad(b,3);
+
+    //get the string for this
+    var cString = rS + gS + bS;
+    
+    //see if its there
+    if(globalColorTaken[cString])
+    {
+        console.log("Found one!!");
+        console.log(globalColorLookup[cString]);
+        globalColorLookup[cString].retractArc();
+    }
+
 }
 
-function drawArcs() {
-
-    gl.useProgram(blendShaderProgram);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER,boxVertexPositionBuffer);
-    gl.vertexAttribPointer(blendShaderProgram.vertexPositionAttribute,boxVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
-    gl.bindBuffer(gl.ARRAY_BUFFER,boxVertexColorBuffer);
-    gl.vertexAttribPointer(blendShaderProgram.vertexColorAttribute, boxVertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
-    setMatrixUniforms();
+function drawSceneIntoOtherBuffer() {
+    drawSceneEither(true);
 }
 
 function drawScene() {
+    drawSceneEither(false);
+}
+
+function drawSceneEither(forPicking) {
 
     cameraPerspectiveClear();
     lighting();
     translateAndRotate();
-    drawEarth();
-    refreshArcBuffers();
-    drawArcs();
 
-    setMatrixUniforms();
+    //here, we draw the earth, TODO: draw earth white
+    drawEarth();
+
     gl.useProgram(blendShaderProgram);
+    setMatrixUniforms();
 
     testArc.animateArc();
     testArc.drawArcStrips();
@@ -1007,10 +1042,15 @@ function drawScene() {
     for(var i = 0; i < drawArcList.length; i++)
     {
         //draw the arc
-        drawArcList[i].drawArcStrips();
-        //drawArcList[i].drawArcStripsForPicking();
+        if(forPicking)
+        {
+            drawArcList[i].drawArcStripsForPicking();
+        }
+        else
+        {
+            drawArcList[i].drawArcStrips();
+        }
     }
-
 }
 
 function randomGps() {
@@ -1124,6 +1164,7 @@ function drawEarth() {
 //slowly rotate
 function slowRotate()
 {
+    return;
     var rMatrix = mat4.create();
     mat4.identity(rMatrix);
     mat4.rotate(rMatrix,degToRad(0.1),[0,1,0]);
