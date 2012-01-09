@@ -131,7 +131,8 @@ $j = jQuery.noConflict();
 //globals
 var animateArcList = [];
 var drawArcList = [];
-
+var globalColorLookup = {};
+var globalColorTaken = {};
 
 var zoomAmount = -6;
 var testArc;
@@ -183,11 +184,16 @@ function arcObj(gpsFrom,gpsTo,baseRadius,startColor,endColor,thickness,maxHeight
     this.myVertexBuffer = gl.createBuffer();
     this.myNormalBuffer = gl.createBuffer();
     this.myColorBuffer = gl.createBuffer();
+    this.myPickBuffer = gl.createBuffer();
 
     this.myVertices = [];
     this.myNormals = [];
     this.myColors = [];
+    this.myPickColors = [];
 
+    //for the picking
+    this.uniqueColor = getUniqueColorObject();
+    globalColorLookup[this.uniqueColor.cString] = this;
 }
 
 arcObj.prototype.initAnimate = function () {
@@ -353,12 +359,14 @@ arcObj.prototype.generateArcPoints = function () {
         this.myColors.push(thisColor[0],thisColor[1],thisColor[2],thisColor[3]);
         this.myColors.push(thisColor[0],thisColor[1],thisColor[2],thisColor[3]);
 
+        //push our unique color twice. dont forget about alpha!
+        this.myPickColors.push(this.uniqueColor.rFloat,this.uniqueColor.gFloat,this.uniqueColor.bFloat,1);
+        this.myPickColors.push(this.uniqueColor.rFloat,this.uniqueColor.gFloat,this.uniqueColor.bFloat,1);
+
     }
     //end of loop, we have filled up all of the arrays
     //now we return and selectively draw to animate
 
-    //need to refresh our buffers
-    //this.refreshBuffers();
 }
 
 
@@ -373,6 +381,9 @@ arcObj.prototype.refreshBuffers = function () {
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.myColorBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.myColors), gl.DYNAMIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.myPickBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.myPickColors), gl.DYNAMIC_DRAW);
  
     //update the sizes
     this.myVertexBuffer.itemSize = 3;
@@ -384,17 +395,36 @@ arcObj.prototype.refreshBuffers = function () {
     this.myNormalBuffer.itemSize = 3;
     this.myNormalBuffer.numItems = this.myNormals.length / 3;
 
+    this.myPickBuffer.itemSize = 4;
+    this.myPickBuffer.numItems = this.myPickColors.length / 4;
+
 }
 
 arcObj.prototype.drawArcStrips = function() {
+    this.drawArcStripsEither(false);
+}
+
+arcObj.prototype.drawArcStripsForPicking = function() {
+    this.drawArcStripsEither(true);
+}
+
+arcObj.prototype.drawArcStripsEither = function(forPicking) {
     //we just need to bind our buffers and then draw!
 
     //need to bind this vertex buffer
     gl.bindBuffer(gl.ARRAY_BUFFER,this.myVertexBuffer);
     gl.vertexAttribPointer(blendShaderProgram.vertexPositionAttribute,this.myVertexBuffer.itemSize, gl.FLOAT, false, 0, 0);
     //need to bind this color buffer
-    gl.bindBuffer(gl.ARRAY_BUFFER,this.myColorBuffer);
-    gl.vertexAttribPointer(blendShaderProgram.vertexColorAttribute, this.myColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+    if(!forPicking)
+    {
+        gl.bindBuffer(gl.ARRAY_BUFFER,this.myColorBuffer);
+        gl.vertexAttribPointer(blendShaderProgram.vertexColorAttribute, this.myColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+    }
+    else
+    {
+        gl.bindBuffer(gl.ARRAY_BUFFER,this.myPickBuffer);
+        gl.vertexAttribPointer(blendShaderProgram.vertexColorAttribute, this.myPickBuffer.itemSize, gl.FLOAT, false, 0, 0);
+    }
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, this.animateVertexAmount);
 }
@@ -425,6 +455,49 @@ function getPosFromGps(gpsCoords)
     return returnVec;
 }
 
+function myColorRand() {
+    return Math.round(Math.random() * 255);
+}
+
+function zeroPad(num,count)
+{
+    var numZeropad = String(num);
+    while(numZeropad.length < count) {
+        numZeropad = "0" + numZeropad;
+    }
+    return numZeropad;
+}
+
+function getRandomColor() {
+    var r = myColorRand(); var rS = zeroPad(r,3);
+    var g = myColorRand(); var gS = zeroPad(g,3);
+    var b = myColorRand(); var bS = zeroPad(b,3);
+    var rFloat = r / 255;
+    var gFloat = g / 255;
+    var bFloat = b / 255;
+    
+    var cString = rS + gS + bS;
+
+    return {'r':r,'g':g,'b':b,'cString':cString,
+            'rFloat':rFloat,'gFloat':gFloat,'bFloat':bFloat};
+}
+
+function getUniqueColorObject()
+{
+    //make a color object that doesnt exist, and go store it
+    var aColor = getRandomColor();
+    while(globalColorTaken[aColor.cString])
+    {
+        aColor = getRandomColor();
+    }
+    //ready for return
+    globalColorTaken[aColor.cString] = true;
+    return aColor;
+}
+
+
+/*******************Geometry Functions******************/
+
 function initGL(canvas) {
     try {
         gl = canvas.getContext("experimental-webgl");
@@ -449,6 +522,8 @@ function onMouseWheel(event) {
 
 function resizeWindow()
 {
+    //TODO: fix the width and height of the frame buffer
+
     //window sizes
     var wHeight = $j(window).height();
     var wWidth = $j(window).width();
@@ -605,6 +680,41 @@ function handleLoadedTexture(texture) {
 
 
 var earthTexture;
+
+var otherFramebuffer;
+var otherTexture;
+
+function initOtherFrameBuffer() {
+    //make frame buffer
+    otherFramebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER,otherFramebuffer);
+    otherFramebuffer.width = $j(window).width();
+    otherFramebuffer.height = $j(window).height();
+
+    //make texture
+    otherTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, otherTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+    gl.generateMipmap(gl.TEXTURE_2D);
+
+    //set it to rgba
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, otherFramebuffer.width, otherFramebuffer.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+    //something with a render buffer?
+    var renderbuffer = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER,renderbuffer);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, otherFramebuffer.width, otherFramebuffer.height);
+
+    //for texture? set attached depth buffer also?
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, otherTexture, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffer);
+
+    //reset back to default
+    gl.bindTexture(gl.TEXTURE_2D,null);
+    gl.bindRenderbuffer(gl.RENDERBUFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
 
 function initTexture() {
     earthTexture = gl.createTexture();
@@ -855,6 +965,17 @@ function refreshArcBuffers()
     boxVertexColorBuffer.numItems = colors.length / 4;
 }
 
+function drawArcs() {
+
+    gl.useProgram(blendShaderProgram);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER,boxVertexPositionBuffer);
+    gl.vertexAttribPointer(blendShaderProgram.vertexPositionAttribute,boxVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,boxVertexColorBuffer);
+    gl.vertexAttribPointer(blendShaderProgram.vertexColorAttribute, boxVertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+    setMatrixUniforms();
+}
+
 function drawScene() {
 
     cameraPerspectiveClear();
@@ -870,7 +991,6 @@ function drawScene() {
     testArc.animateArc();
     testArc.drawArcStrips();
 
-    gl.useProgram(blendShaderProgram);
     //animate all the arcs if necessary
     for(var i = 0; i < animateArcList.length; i++)
     {
@@ -888,6 +1008,7 @@ function drawScene() {
     {
         //draw the arc
         drawArcList[i].drawArcStrips();
+        //drawArcList[i].drawArcStripsForPicking();
     }
 
 }
@@ -999,21 +1120,6 @@ function drawEarth() {
 
 }
 
-function drawArcs() {
-
-    //now for box?
-    gl.useProgram(blendShaderProgram);
-
-    //need to bind this buffer
-    gl.bindBuffer(gl.ARRAY_BUFFER,boxVertexPositionBuffer);
-    gl.vertexAttribPointer(blendShaderProgram.vertexPositionAttribute,boxVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
-    gl.bindBuffer(gl.ARRAY_BUFFER,boxVertexColorBuffer);
-    gl.vertexAttribPointer(blendShaderProgram.vertexColorAttribute, boxVertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
-    setMatrixUniforms();
-
-    //gl.drawArrays(gl.TRIANGLE_STRIP, 0, boxVertexPositionBuffer.numItems);
-}
-
 
 //slowly rotate
 function slowRotate()
@@ -1039,6 +1145,7 @@ function webGLStart() {
     initEarthBuffers();
     initArcBuffers();
     initTexture();
+    initOtherFrameBuffer();
 
     gl.clearColor(0.0, 0.0, 0.0, 0.0);
     gl.enable(gl.DEPTH_TEST);
@@ -1300,7 +1407,7 @@ function graphFriendRelationship(relationshipType,friendId)
 function launchFbAvalanche() {
 
     //short circuit
-    //return;
+    return;
     console.log(fbLoginResponse);
     console.log("***********You're logged in!***************");
 
