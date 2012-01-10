@@ -1253,22 +1253,26 @@ $j(document).ready(function(){
 <script>
 
 //fblobals
-hometownConnections = [];
-workplaceConnections = [];
-currentConnections = [];
-educationConnections = [];
+var hometownConnections = [];
+var workplaceConnections = [];
+var currentConnections = [];
+var educationConnections = [];
 
-connectionFromByPlace = {};
-connectionToByPlace = {};
+var connectionFromByPlace = {};
+var connectionToByPlace = {};
 
-globalPlaceDict = {};
+var globalPlaceDict = {};
+
+//me stuff
+var meObject = null;
+var myHometown = null;
+var myLocation = null;
+var myWorkplaces = [];
+var myEducations = [];
 
 //the lookup
 categoryToList = {'hometown':hometownConnections,'workplace':workplaceConnections,
                 'current':currentConnections,'education':educationConnections};
-
-//just holds the about me part
-var meObject = null;
 
 //the login response
 var fbLoginResponse = null;
@@ -1341,6 +1345,11 @@ connectionObj.prototype.buildIfReady = function () {
 
     this.weAreBuilt = true;
 
+    //go ahead and start drawing and animating
+    animateArcList.push(ourArc);
+    drawArcList.push(ourArc);
+
+
     //return the response and the arc
     return {'response':true,'arc':this.myArc};
 }
@@ -1409,7 +1418,7 @@ connectionObj.prototype.cloneConnectionWithNewTo = function(newToPlace) {
 
     for(var i = 0; i < this.friendsInConnection.length; i++)
     {
-        newConnection.addFriend(this.friendsInConnection[i];
+        newConnection.addFriend(this.friendsInConnection[i]);
     }
     //should be enough....?
     return newConnection;
@@ -1651,41 +1660,47 @@ function handleFriendBack(response){
     {
         return;
     }
+    //BIG TODO: check for earlier existence!!!
 
+    //here we start making that stuff 
+    if(response.location)
+    {
+        handleFriendLocation(response.location);
+    }
+    if(response.hometown)
+    {
+        handleFriendHometown(response.hometown);
+    }
+    if(response.work && response.work[0])
+    {
+        handleFriendWorkplace(response.work[0]);
+    }
+    //todo: education
 }
 
-
-function graphFriendRelationship(relationshipType,friendId)
-{
-    //console.log('graphing relationship of ' + relationshipType + ' between you and friend ' + globalFriendDict[friendId].name);
-    var locationId = globalFriendDict[friendId][relationshipType].id;
-    var locationGPS = globalLocationDict[locationId].location;
-    //console.log("gps is " + locationGPS.latitude + " " + locationGPS.longitude);
-
-
-    //if we have a hometown
-    if(meObject.hometown && meObject.hometown.id && globalLocationDict[meObject.hometown.id].location)
-    {
-        var fromGps = globalLocationDict[meObject.hometown.id].location;
-        var toGps = locationGPS;
-        //make a new arc and add it
-        var thisArc = new arcObj(fromGps,toGps,2,[0,0,1,1],[1,1,1,1],0.04,0.1);
-        //do all the math
-        thisArc.buildArc();
-        //store ourselves
-        thisArc.toFriend = globalFriendDict[friendId];
-
-        //we will animate
-        animateArcList.push(thisArc);
-        //we want to draw it too
-        drawArcList.push(thisArc);
-    }
-    else
-    {
-        console.log('no hometown yet');
-        //add this to the todo list?
-    }
+function handleFriendLocation(locationJson) {
+    //ok this is kinda like the others. basically, get or make the location
+    //and make the connection
+    var theirLocation = getOrMake(locationJson,'location');
+    //make the connection for this between the location and the users location
+    var theConnection = new connectionObj('location',myLocation,theirLocation);
+    theConnection.buildIfReady();
+    //todo: add friends on this connection and all that jazz
 }
+
+function handleFriendHometown(hometownJson) {
+    var theirHometown = getOrMake(hometownJson,'hometown');
+    var theConnection = new connectionObj('hometown',myHometown,theirHometown);
+    theConnection.buildIfReady();
+    //todo friends as wlel
+}
+
+function handleFriendWorkplace(workplaceJson) {
+    var theirWorkplace = getOrMake(workplaceJson,'workplace');
+    var theConnection = new connectionObj('workplace',myWorkplaces[0],theirWorkplace);
+    theConnection.buildIfReady();
+}
+
 
 function launchFbAvalanche() {
 
@@ -1697,7 +1712,76 @@ function launchFbAvalanche() {
     //do a query for your friends
     FB.api('/me?fields=friends',handleFriendsBack);
     //get yourself too
-    //FB.api('/me',handleMeBack);
+    FB.api('/me',handleMeBack);
+}
+
+function getOrMake(placeJson,placeType) {
+    //if this id isn there
+    var thePlace = null;
+    var theId = placeJson.id;
+
+    if(!globalPlaceDict[theId])
+    {
+        //make it
+        thePlace = new placeObj(placeJson,placeType);
+        thePlace.findGps();
+    }
+    else
+    {  
+        thePlace = globalPlaceDict[theId];
+    }
+    return thePlace;
+}
+
+function setMyHometown(hometownJson) {
+    myHometown = getOrMake(hometownJson,'hometown');
+    //now loop through and set our hometown connections
+    for(var i =0; i < hometownConnections.length; i++)
+    {
+        //set the "from" place
+        var theConnection = hometownConnections[i];
+        theConnection.setFromPlace(myHometown);
+        //now check if we are done
+        theConnection.buildIfReady();
+    }
+}
+
+function setMyLocation(locationJson) {
+    myLocation = getOrMake(locationJson,'location');
+    //loop through and set our locaiton connecitons
+    for(var i = 0; i < locationConnections.length; i++)
+    {
+        //set the from
+        var theConnection = locationConnections[i];
+        theConnection.setFromPlace(myLocation);
+        theConnection.buildIfReady();
+    }
+}
+
+function setFirstWorkplace(workplaceJson) {
+    var myWorkplace = getOrMake(workplaceJson,'workplace');
+    myWorkplaces.push(myWorkplace);
+    //loop through and set our workplace connections
+    for(var i = 0; i < workplaceConnections.length; i++)
+    {
+        var theConnection = workplaceConnections[i];
+        theConnection.setFromPlace(myWorkplace);
+        theConnection.buildIfReady();
+    }
+}
+
+funciton setOneOfMyWorkplaces(workplaceJson) {
+    //the critical thing here is if you are the first or not
+    if(!myWorkplaces.length)
+    {
+        //set first
+        setFirstWorkplace(workplaceJson);
+        return;
+    }
+    //we aren''t the first, so we have to clone a ton here and do all that
+
+    //basically we need to loop through every 
+    //TODO: OH SHIT!! we need to make the list unique, because multiple point to one. fuckkkk. todo
 }
 
 function handleMeBack(response){
@@ -1707,18 +1791,20 @@ function handleMeBack(response){
     //TODO: graph me connections
     if(response.hometown)
     {
-       var hometownId = response.hometown.id;
-       globalLocationDict[response.hometown.id] = response.hometown;
-       globalLocationDict[hometownId].todoList = [];
-       globalLocationDict[hometownId].todoList.push(function() {
-           console.log("Your hometown back!!");
-           console.log(globalLocationDict[hometownId].location);
-        });
-       getLocationDetails(hometownId);
+        setMyHometown(response.hometown);
     }
     else
     {
         alert("You haven't listed a hometown on Facebook!");
+    }
+    if(response.location)
+    {
+        setMyLocation(response.location);
+    }
+    if(response.work && response.work[0])
+    {
+        var firstWork = response.work[0];
+        setOneOfMyWorkplaces(firstWork);
     }
 }
 
