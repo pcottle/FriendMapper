@@ -37,38 +37,6 @@ void main(void) {
 </script>
 
 
-<script id="shader-atmosphere-vs" type="x-shader/x-vertex">
-    attribute vec3 aVertexPosition;
-    attribute vec3 aVertexNormal;
-
-    uniform mat4 uMVMatrix;
-    uniform mat4 uPMatrix;
-    uniform mat3 uNMatrix;
-
-    varying vec3 vNormal;
-
-    void main(void) {
-        gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
-
-        vec3 transformedNormal = uNMatrix * aVertexNormal;
-        vNormal = transformedNormal;
-}
-</script>
-
-<script id="shader-atmosphere-fs" type="x-shader/-fragment">
-    precision mediump float;
-
-    varying vec3 vNormal;
-
-    void main(void) {
-        float intensity = 1.05 - dot(vNormal,vec3(0,0,1));
-        vec3 atmosphere = vec3(1,1,1) * pow(intensity,3.0);
-        gl_FragColor = vec4(atmosphere,1);
-
-    }
-
-</script>
-
 <script id="shader-fs" type="x-shader/x-fragment">
     precision mediump float;
 
@@ -133,11 +101,13 @@ var arcBaseRadius = 2;
 var arcBaseThickness = 0.04;
 var arcBaseHeight = 0.1;
 
-var white = [1,1,1,1];
-var blue = [0,0,1,1];
-var green = [0,1,0,1];
-var red = [1,0,0,1];
-var yellow = [1,1,0,1];
+var arcAlpha = 0.8;
+
+var white = [1,1,1,arcAlpha];
+var blue = [0,0,1,arcAlpha];
+var green = [0,1,0,arcAlpha];
+var red = [1,0,0,arcAlpha];
+var yellow = [1,1,0,arcAlpha];
 
 var categoryToFromColor = { 'hometown':blue,
                             'current':green,
@@ -150,15 +120,20 @@ var categoryToToColor = {   'hometown':white,
                             'workplace':white};
 
 //globals
+var shouldCircuit = true;
+
+
 var animateArcList = [];
 var drawArcList = [];
 var globalColorLookup = {};
 var globalColorTaken = {};
 
+//camera stuff
 var zoomAmount = -6;
-var testArc;
-var fromGps = {'latitude':37.221519,'longitude':-121.977020};
-var toGps = {'latitude':37.22159,'longitude':-76};
+var globalYrotate = 180;
+var globalXrotate = 0;
+var angleLimit = 85;
+
 
 /*****************CLASSES*******************/
 
@@ -837,7 +812,19 @@ function handleMouseMove(event) {
     var deltaY = newY - lastMouseY;
     mat4.rotate(newRotationMatrix, degToRad(deltaY / 10), [1, 0, 0]);
 
-    mat4.multiply(newRotationMatrix, earthRotationMatrix, earthRotationMatrix);
+    //mat4.multiply(newRotationMatrix, earthRotationMatrix, earthRotationMatrix);
+
+    globalYrotate += deltaX / 10;
+    globalXrotate += deltaY / 10;
+
+    if(globalXrotate > angleLimit)
+    {
+        globalXrotate = angleLimit;
+    }
+    else if (globalXrotate < -angleLimit)
+    {
+        globalXrotate = -angleLimit;
+    }
 
     lastMouseX = newX
     lastMouseY = newY;
@@ -940,56 +927,6 @@ function initEarthBuffers() {
 
 }
 
-function initArcBuffers() {
-
-    var radius = 2;
-    //for box
-    boxVertexPositionBuffer = gl.createBuffer();
-
-    var lat = 37.221519;
-    var long = -121.977020;
-
-    console.log("Lat is " + lat);
-    console.log("Long is " + long);
-
-    var latRad = lat * Math.PI / 180;
-    var longRad = long * Math.PI / 180;
-
-    var theta = Math.PI/2 - latRad;
-    var phi = Math.PI - longRad;
-
-    console.log("Phi is " + phi);
-    console.log("theta is " + theta);
-
-    var x = Math.cos(phi) * Math.sin(theta) * radius;
-    var y = Math.cos(theta) * radius;
-    var z = Math.sin(phi) * Math.sin(theta) * radius;
-
-    vertices = [
-        x, y, z,
-        x*2, y*2, z*2,
-        2, -2, 0,
-        2, 2, 0
-    ];
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, boxVertexPositionBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
-    boxVertexPositionBuffer.itemSize = 3;
-    boxVertexPositionBuffer.numItems = 4;
-
-    boxVertexColorBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, boxVertexColorBuffer);
-    colors = [
-        1, 0, 0, 1,
-        1, 0, 0, 1,
-        1, 1, 1, 1,
-        1, 1, 1, 1
-    ];
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.DYNAMIC_DRAW);
-    boxVertexColorBuffer.itemSize = 4;
-    boxVertexColorBuffer.numItems = 4;
-
-}
 
 function mouseClickPick(event) {
     //get the coordinates on our canvas
@@ -1031,9 +968,23 @@ function mouseClickPick(event) {
         {
             console.log("That friend is " + theArc.toFriend.name);
         }
-        globalColorLookup[cString].retractArc();
+        //globalColorLookup[cString].retractArc();
+        arcClick(globalColorLookup[cString]);
     }
 
+}
+
+function arcClick(anArc)
+{
+    if(anArc.myConnection)
+    {
+        console.log("this arcs connection:");
+        console.log(anArc.myConnection);
+    }
+    else
+    {
+        anArc.retractArc();
+    }
 }
 
 function drawSceneIntoOtherBuffer() {
@@ -1100,11 +1051,22 @@ function generateRandomArc() {
     var fromGps = randomGps();
     var toGps = randomGps();
 
-    var thisArc = new arcObj(fromGps,toGps,2,[0,0,1,1],[1,1,1,1],0.04,0.1);
+    var thisArc = new arcObj(fromGps,toGps,2,[0,0,1,arcAlpha],[1,1,1,arcAlpha],0.04,0.1);
     thisArc.buildArc();
 
     animateArcList.push(thisArc);
     drawArcList.push(thisArc);
+}
+
+function hideAllConnections(theList) {
+    for(var i = 0; i < theList.length; i++)
+    {
+        var theArc = theList[i].myArc;
+        if(theArc)
+        {
+            theArc.retractArc();
+        }
+    }
 }
 
 function testBigArc() {
@@ -1166,6 +1128,30 @@ function translateAndRotate() {
 
     mat4.translate(mvMatrix, [0, 0, zoomAmount]);
 
+    //do rotation for camera
+    var newRot = mat4.create();
+    mat4.identity(newRot);
+    //mat4.rotate(newRot,degToRad(globalYrotate), [0,1,0]);
+
+    //now need to get the other axis
+    var secondRotAxis = vec3.create();
+    var result = vec3.create();
+    secondRotAxis[0] = 1;
+    mat4.multiplyVec3(newRot,secondRotAxis,result);
+
+    /*console.log("the result");
+    console.log(result[0]);
+    console.log(result[1]);
+    console.log(result[2]);*/
+
+    mat4.rotate(newRot,degToRad(globalXrotate), [result[0],result[1],result[2]]);
+    mat4.rotate(newRot,degToRad(globalYrotate), [0,1,0]);
+
+
+    //now multiply earth rotation
+    mat4.identity(earthRotationMatrix);
+    mat4.multiply(earthRotationMatrix,newRot);
+
     mat4.multiply(mvMatrix, earthRotationMatrix);
     setMatrixUniforms();
 }
@@ -1195,6 +1181,7 @@ function drawEarth() {
 //slowly rotate
 function slowRotate()
 {
+    globalYrotate += 0.1;
     return;
     var rMatrix = mat4.create();
     mat4.identity(rMatrix);
@@ -1215,12 +1202,13 @@ function webGLStart() {
     initGL(canvas);
     initShaders();
     initEarthBuffers();
-    initArcBuffers();
     initTexture();
     initOtherFrameBuffer();
 
     gl.clearColor(0.0, 0.0, 0.0, 0.0);
+    gl.enable(gl.BLEND);
     gl.enable(gl.DEPTH_TEST);
+    gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
 
     document.onmousedown = handleMouseDown;
     document.onmouseup = handleMouseUp;
@@ -1231,7 +1219,10 @@ function webGLStart() {
 
 $j(document).ready(function(){
     webGLStart();
-    //rubberBandBall();
+    if(shouldCircuit)
+    {
+        rubberBandBall();
+    }
 
     $j(window).resize(function(){resizeWindow();});
     //initial resize
@@ -1257,6 +1248,9 @@ var hometownConnections = [];
 var workplaceConnections = [];
 var currentConnections = [];
 var educationConnections = [];
+
+var uniqueWorkplaceConnections = {};
+var uniqueEducationConnections = {};
 
 var connectionFromByPlace = {};
 var connectionToByPlace = {};
@@ -1294,6 +1288,24 @@ function connectionObj(category,fromPlace,toPlace) {
 
     //add to hometown connections, etc
     categoryToList[category].push(this);
+    //but also, we need to add ourselves to the unique lists
+    //if we are a workplace or education because those
+    //get cloned 
+    if(category == 'workplace')
+    {
+        if(!uniqueWorkplaceConnections[this.toPlace.id])
+        {
+            uniqueWorkplaceConnections[this.toPlace.id] = this;
+        }
+    }
+    if(category == 'education')
+    {
+        if(!uniqueEducationConnections[this.toPlace.id])
+        {
+            uniqueEducationConnections[this.toPlace.id] = this;
+        }
+    }
+
 
     //also, add these to the reverse lookup objects
     this.setFromPlace(fromPlace);
@@ -1340,15 +1352,17 @@ connectionObj.prototype.buildIfReady = function () {
     var fromColor = categoryToFromColor[this.category];
     var toColor = categoryToToColor[this.category];
 
-    var ourArc = new arcObj(fromGps,toGps,arcBaseRadius,fromColor,toColor,arcBaseThickness,arcBaseHeight);
-    ourArc.buildArc();
-    this.myArc = ourArc;
+    var myArc = new arcObj(fromGps,toGps,arcBaseRadius,fromColor,toColor,arcBaseThickness,arcBaseHeight);
+    myArc.buildArc();
+
+    myArc.myConnection = this;
+    this.myArc = myArc;
 
     this.weAreBuilt = true;
 
     //go ahead and start drawing and animating
-    animateArcList.push(ourArc);
-    drawArcList.push(ourArc);
+    animateArcList.push(myArc);
+    drawArcList.push(myArc);
 
 
     //return the response and the arc
@@ -1378,7 +1392,7 @@ connectionObj.prototype.checkIfImInList = function(aList) {
 connectionObj.prototype.setFromPlace = function(place) {
     this.fromPlace = place;
     //if we have a valid id and everything
-    if(!place.id)
+    if(!place || !place.id)
     {
         return;
     }
@@ -1414,6 +1428,17 @@ connectionObj.prototype.setToPlace = function(place) {
 }
 
 
+connectionObj.prototype.cloneConnectionWithNewFrom = function(newFromPlace) {
+    var newConnection = new connectionObj(this.category,newFromPlace,this.toPlace);
+
+    for(var i = 0; i < this.friendsInConnection.length; i++)
+    {
+        newConnection.addFriend(this.friendsInConnection[i]);
+    }
+    //should be enough....?
+    return newConnection;
+}
+
 connectionObj.prototype.cloneConnectionWithNewTo = function(newToPlace) {
     var newConnection = new connectionObj(this.category,this.fromPlace,newToPlace);
 
@@ -1437,21 +1462,37 @@ function placeObj(ourJson,placeType) {
     //this holds stuff like the actual location of this employer for instance
     this.locationJson = null;
 
+    //assign our location jsons, and our id''s
     if(this.type == 'hometown' || this.type == 'current')
     {
         this.locationJson = ourJson; //they are identical
+        this.id = ourJson.id;
+        this.name = ourJson.name;
     }
-    else
+    else if(this.type == 'workplace')
     {
-        //we have to figure them out essentially
         if(this.ourJson && this.ourJson.location) //sometimes employers come with locations
         {
             this.locationJson = this.ourJson.location;
         }
+        //our id is the employer id
+        this.id = ourJson.employer.id;
+        this.name = ourJson.employer.name;
+    }
+    else if(this.type == 'education')
+    {
+        if(this.ourJson && this.ourJson.location)
+        {
+            this.locationJson = this.ourJson.location;
+        }
+        this.id = ourJson.school.id;
+        this.name = ourJson.school.name;
+    }
+    else
+    {
+        throw "invalid type " + this.type;
     }
 
-    this.name = ourJson.name;
-    this.id = ourJson.id;
     this.friendsInPlace = [];
     this.ourGps = null;
 
@@ -1483,7 +1524,7 @@ placeObj.prototype.refreshConnectionsWithMyPlace = function() {
 
 placeObj.prototype.easyLocationDeetsCb = function(response) {
     //error check
-    if(response.error) { console.log("error on cb:"); console.log(response); throw "error on cb"; return;}
+    if(response.error) { console.log("error on cb:"); console.log(response); return;}
 
     //go just store it basically
     this.locationJson = response;
@@ -1499,11 +1540,18 @@ placeObj.prototype.easyLocationDeetsCb = function(response) {
     }
     //uh oh, the location deets didnt have a gps, this is weird....
     console.log("Weird, location deets didnt have a gps...");
+    console.log("this is the response from fb");
+    console.log(response);
     throw "no location deets on cb";
 }
 
 function makeEasyLocationDeetsCallback(referenceToObject) {
     var toReturn = function(data) { referenceToObject.easyLocationDeetsCb(data); }
+    return toReturn;
+}
+
+function makeYqlCallback(referenceToObject) {
+    var toReturn = function(data,textStatus,jqXHR) { referenceToObject.yqlCallback(data,textStatus,jqXHR); }
     return toReturn;
 }
 
@@ -1520,14 +1568,9 @@ placeObj.prototype.findGps = function () {
     //now its a bit trickier. if we are a workplace, we should query like that
     if(this.type == 'workplace')
     {
-        //its funny, YQL is way better at returning good GPS results for crappy
-        //employer names. im just going to go for it, sorry fb graph but
-        //your search isnt amazing for stuff like this
-        console.log("yoyo");
-        console.log(this.ourJson);
         if(this.ourJson.employer.name) //pretty sure all of them have employer names
         {
-            this.makeYqlForGps(this.ourJson.employer.name);
+            this.makeFbGraphSearchForGps(this.ourJson.employer.name);
         }
     }
     else if(this.type == 'education')
@@ -1541,10 +1584,76 @@ placeObj.prototype.findGps = function () {
                 schoolName = schoolName + " " + this.ourJson.type;
             }
             //now make query
-            this.makeYqlForGps(schoolName);
+            this.makeFbGraphSearchForGps(schoolName);
         }
     }
     //done with firing off requests for gps locations!
+}
+
+placeObj.prototype.lastDitchYql = function () {
+    try {
+        if(this.type == 'workplace')
+        {
+            //its funny, YQL is way better at returning good GPS results for crappy
+            //employer names. im just going to go for it, sorry fb graph but
+            //your search isnt amazing for stuff like this
+            if(this.ourJson.employer.name) //pretty sure all of them have employer names
+            {
+                this.makeYqlForGps(this.ourJson.employer.name);
+            }
+        }
+        else if(this.type == 'education')
+        {
+            //now we do the same query, but append the type of educational institution
+            if(this.ourJson.school.name)
+            {
+                var schoolName = this.ourJson.school.name;
+                if(this.ourJson.type)
+                {
+                    schoolName = schoolName + " " + this.ourJson.type;
+                }
+                //now make query
+                this.makeYqlForGps(schoolName);
+            }
+        }
+    } catch(err) {
+        console.log("another yql error");
+    }
+}
+
+function makeFbSearchCallback(referenceToObject) {
+    var toReturn = function(data) { referenceToObject.fbGraphSearchCallback(data); }
+    return toReturn;
+}
+
+
+placeObj.prototype.makeFbGraphSearchForGps = function(name) {
+    var baseQuery = "/search?q=" + escape(name);
+    var ourCallbackClosure = makeFbSearchCallback(this);
+
+    FB.api(baseQuery, function(response) { ourCallbackClosure(response); } );
+
+}
+
+placeObj.prototype.fbGraphSearchCallback = function(response) {
+    if(response.error)
+    {
+        console.log('error on fb graph query');
+        console.log(response);
+        return;
+    }
+    if(response.data && response.data[0] && response.data[0].location && response.data[0].location.latitude)
+    {
+        //we have a gps now
+        var ourGps = response.data[0].location;
+        this.ourGps = ourGps;
+        this.refreshConnectionsWithMyPlace();
+    }
+    else
+    {
+        //oh no we should probably do the yql thing now
+        this.lastDitchYql();
+    }
 }
 
 placeObj.prototype.makeYqlForGps = function(textForYql) {
@@ -1552,19 +1661,23 @@ placeObj.prototype.makeYqlForGps = function(textForYql) {
     var yqlLink = "http://query.yahooapis.com/v1/public/yql";
     var baseQuery = 'select centroid from geo.places where text = "' + textForYql + '"';
 
+    //make the closure
+    var ourClosure = makeYqlCallback(this);
     //now make this query
-    $.ajax(yqlLink,{'data':{'q':baseQuery,'format':'json'},'cache':true,'crossDomain':true,'success':function(data,textStatus,jqXHR){
+    $j.post(yqlLink,{'q':baseQuery,'format':'json'},ourClosure,'jsonp');
+
+    /*$j.ajax(yqlLink,{'data':{'q':baseQuery,'format':'json'},'cache':true,'crossDomain':true,'success':function(data,textStatus,jqXHR){
         //go do the yql callback for this object
-        this.yqlCallback(data,textStatus,jqXHR);
-    }});
+        ourClosure(data,textStatus,jqXHR);
+    }});*/
 }
 
 placeObj.prototype.yqlCallback = function(data,textStatus,jqXHR) {
     //RAWRRRrrr
-    console.log("YQL callback");
-    console.log(textStatus);
-    console.log(jqXHR);
-    console.log(data);
+    //console.log("YQL callback");
+    //console.log(textStatus);
+    //console.log(jqXHR);
+    //console.log(data);
 
     //go see if there are results, and if so, take the first one
     if(data.query && data.query.results && data.query.results.place && data.query.results.place[0])
@@ -1643,8 +1756,8 @@ function handleFriendsBack(response) {
     var friendList = response.friends.data;
 
     //RATE LIMIT: fix not only first 3 friends
-    for(var i = 0; i < friendList.length; i++)
-    //for(var i =0; i < 10; i++)
+    //for(var i = 0; i < friendList.length; i++)
+    for(var i =0; i < 100; i++)
     {
         var friend = friendList[i];
 
@@ -1657,7 +1770,7 @@ function handleFriendsBack(response) {
 }
 
 function handleFriendBack(response){
-    console.log("Individual friend back");
+    //console.log("Individual friend back");
     //console.log(response);
 
     //if auth failed for some reason... like mid-session
@@ -1679,9 +1792,18 @@ function handleFriendBack(response){
     }
     if(response.work && response.work[0])
     {
-        handleFriendWorkplace(response.work[0]);
+        for(var i = 0; i < response.work.length; i++)
+        {
+            handleFriendWorkplace(response.work[i]);
+        }
     }
-    //todo: education
+    if(response.education && response.education[0])
+    {
+        for(var j = 0; j < response.education.length; j++)
+        {
+            handleFriendEducation(response.education[j]);
+        }
+    }
 }
 
 function handleFriendCurrent(currentJson) {
@@ -1703,15 +1825,34 @@ function handleFriendHometown(hometownJson) {
 
 function handleFriendWorkplace(workplaceJson) {
     var theirWorkplace = getOrMake(workplaceJson,'workplace');
-    var theConnection = new connectionObj('workplace',myWorkplaces[0],theirWorkplace);
-    theConnection.buildIfReady();
+
+    //loop through all of my workplaces, adding new connections
+    for(var i = 0; i < myWorkplaces.length; i++)
+    {
+        var theC = new connectionObj('workplace',myWorkplaces[i],theirWorkplace);
+        theC.buildIfReady();
+    }
+}
+
+function handleFriendEducation(educationJson) {
+    var theirEducationPlace = getOrMake(educationJson,'education');
+
+    //loop through all of my educations
+    for(var i = 0; i < myEducations.length; i++)
+    {
+        var theC = new connectionObj('education',myEducations[i],theirEducationPlace);
+        theC.buildIfReady();
+    }
 }
 
 
 function launchFbAvalanche() {
 
     //short circuit
-    //return;
+    if(shouldCircuit)
+    {
+        return;
+    }
     console.log(fbLoginResponse);
     console.log("***********You're logged in!***************");
 
@@ -1722,9 +1863,34 @@ function launchFbAvalanche() {
 }
 
 function getOrMake(placeJson,placeType) {
-    //if this id isn there
     var thePlace = null;
-    var theId = placeJson.id;
+
+    var theId = null;
+    //the id actually will be different if its an employer or school
+    if(placeType == 'current' || placeType == 'hometown')
+    {
+        theId = placeJson.id;
+    }
+    else if (placeType == 'workplace')
+    {
+        theId = placeJson.employer.id;
+    }
+    else if (placeType == 'education')
+    {
+        if(!placeJson.school)
+        {
+            console.log("trying to make this education and failed cause");
+            console.log(placeJson);
+            throw "wtf school wth no school id?";
+        }
+        theId = placeJson.school.id;
+    }
+    if(!theId)
+    {
+        console.log("this hometown");
+        console.log(placeJson);
+        throw "invalid json, no id present for this type " + placeType;
+    }
 
     if(!globalPlaceDict[theId])
     {
@@ -1764,6 +1930,18 @@ function setMyCurrent(currentJson) {
     }
 }
 
+function setFirstEducation(educationJson) {
+    var myEducation = getOrMake(educationJson,'education');
+    myEducations.push(myEducation);
+
+    for(var i = 0; i < educationConnections.length; i++)
+    {
+        var theC = educationConnections[i];
+        theC.setFromPlace(myEducation);
+        theC.buildIfReady();
+    }
+}
+
 function setFirstWorkplace(workplaceJson) {
     var myWorkplace = getOrMake(workplaceJson,'workplace');
     myWorkplaces.push(myWorkplace);
@@ -1786,15 +1964,52 @@ function setOneOfMyWorkplaces(workplaceJson) {
     }
     //we aren''t the first, so we have to clone a ton here and do all that
 
-    //basically we need to loop through every 
-    //TODO: OH SHIT!! we need to make the list unique, because multiple point to one. fuckkkk. todo
+    duplicateWorkplaceConnections(workplaceJson);
+}
+
+function setOneOfMyEducations(educationJson) {
+    if(!myEducations.length)
+    {
+        setFirstEducation(educationJson);
+        return;
+    }
+    duplicateEducationConnections(educationJson);
+}
+
+function duplicateEducationConnections(educationJson) {
+    var myEducation = getOrMake(educationJson,'education');
+    myEducations.push(myEducation);
+
+    for(key in uniqueEducationConnections)
+    {
+        var theC = uniqueEducationConnections[key];
+        var theNewC = theC.cloneConnectionWithNewFrom(myEducation);
+        //build if ready
+        theNewC.buildIfReady();
+    }
+}
+
+function duplicateWorkplaceConnections(workplaceJson) {
+    //get the place first
+    var myWorkplace = getOrMake(workplaceJson,'workplace');
+    //this is a new workplace for me
+    myWorkplaces.push(myWorkplace);
+
+    //loop through all the unique workplace connections and duplicate them
+    for(key in uniqueWorkplaceConnections)
+    {
+        var theC = uniqueWorkplaceConnections[key];
+        var theNewC = theC.cloneConnectionWithNewFrom(myWorkplace);
+        //build if its ready
+        theNewC.buildIfReady();
+    }
 }
 
 function handleMeBack(response){
     console.log("me back");
     console.log(response);
     meObject = response;
-    //TODO: graph me connections
+
     if(response.hometown)
     {
         setMyHometown(response.hometown);
@@ -1809,10 +2024,25 @@ function handleMeBack(response){
     }
     if(response.work && response.work[0])
     {
-        var firstWork = response.work[0];
-        setOneOfMyWorkplaces(firstWork);
+        setFirstWorkplace(response.work[0]);
+        for(var i = 1; i < response.work.length; i++)
+        {
+            var thisWork = response.work[i];
+            duplicateWorkplaceConnections(thisWork);
+        }
+    }
+    if(response.education && response.education[0])
+    {
+        setFirstEducation(response.education[0]);
+        for(var j = 1; j < response.education.length; j++)
+        {
+            var thisEducation = response.education[j];
+            duplicateEducationConnections(response.education);
+        }
     }
 }
+
+
 
 function askForAuth() {
     //add that button thing
