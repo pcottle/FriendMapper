@@ -128,6 +128,27 @@ void main(void) {
 var gl;
 $j = jQuery.noConflict();
 
+//arc dimensions and colors
+var arcBaseRadius = 2;
+var arcBaseThickness = 0.04;
+var arcBaseHeight = 0.1;
+
+var white = [1,1,1,1];
+var blue = [0,0,1,1];
+var green = [0,1,0,1];
+var red = [1,0,0,1];
+var yellow = [1,1,0,1];
+
+var categoryToFromColor = { 'hometown':blue,
+                            'current':green,
+                            'education':yellow,
+                            'workplace':red};
+
+var categoryToToColor = {   'hometown':white,
+                            'current':white,
+                            'education':white,
+                            'workplace':white};
+
 //globals
 var animateArcList = [];
 var drawArcList = [];
@@ -138,8 +159,6 @@ var zoomAmount = -6;
 var testArc;
 var fromGps = {'latitude':37.221519,'longitude':-121.977020};
 var toGps = {'latitude':37.22159,'longitude':-76};
-
-var defaultHometown = {'id':2,'location':{'latitude':37.221519,'longitude':-121.977020}};
 
 /*****************CLASSES*******************/
 
@@ -1221,10 +1240,6 @@ $j(document).ready(function(){
     var container = document.getElementById('earth-canvas');
     container.addEventListener('mousewheel',onMouseWheel,false);
 
-    globalLocationDict[2] = defaultHometown;
-    meObject = {};
-    meObject.hometown = defaultHometown;
-
 });
 
 </script>
@@ -1238,19 +1253,314 @@ $j(document).ready(function(){
 <script>
 
 //fblobals
+hometownConnections = [];
+workplaceConnections = [];
+currentConnections = [];
+educationConnections = [];
+
+connectionFromByPlace = {};
+connectionToByPlace = {};
+
+globalPlaceDict = {};
+
+//the lookup
+categoryToList = {'hometown':hometownConnections,'workplace':workplaceConnections,
+                'current':currentConnections,'education':educationConnections};
 
 //just holds the about me part
 var meObject = null;
-//all your friends by id
-var globalFriendDict = {};
-//all the locations so far by id
-var globalLocationDict = {};
-//all the places so far by id
-var globalPlaceDict = {};
 
 //the login response
 var fbLoginResponse = null;
 
+/******************************CLASSES**********************/
+
+function connectionObj(category,fromPlace,toPlace) {
+    this.myArc = null;
+    this.category = category;
+    this.fromPlace = fromPlace;
+    this.toPlace = toPlace;
+    this.friendsInConnection = [];
+    this.weAreBuilt = false;
+
+    //depending on the category
+    //add it to the right list
+    if(!categoryToList[category])
+    {   throw "Invalid category added " + category; return;}
+
+    //add to hometown connections, etc
+    categoryToList[category].push(this);
+
+    //also, add these to the reverse lookup objects
+    this.setFromPlace(fromPlace);
+    this.setToPlace(toPlace);
+}
+//short constructor, most of the work is done over here
+connectionObj.prototype.addFriend = function(friend) {
+    this.friendsInConnection.push(friend);
+}
+
+connectionObj.prototype.checkPlace = function(which) {
+    if(this[which] && this[which].id)
+    {
+        var id = this[which];
+        if(globalPlaceDict[id].ourGps && globalPlaceDict[id].ourGps.latitude)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+connectionObj.prototype.buildIfReady = function () {
+    if(this.weAreBuilt)
+    {
+        return false;
+    }
+
+    if(!this.isReadyForBuild())
+    {
+        //did not succeed, we aren't ready
+        return {'response':false,'arc':null};
+    }
+
+    //let's go ahead and build our arc!
+    //get our from gps
+    var fromId = this.fromPlace.id;
+    var fromGps = globalPlaceDict[fromId].ourGps;
+
+    var toId = this.toPlace.id;
+    var toGps = globalPlaceDict[toId].ourGps;
+    
+    //ok these two are good, lets make the arc
+    var fromColor = categoryToFromColor[this.category];
+    var toColor = categoryToToColor[this.category];
+
+    var ourArc = new arcObj(fromGps,toGps,arcBaseRadius,fromColor,toColor,arcBaseThickness,arcBaseHeight);
+    this.myArc = ourArc;
+
+    this.weAreBuilt = true;
+
+    //return the response and the arc
+    return {'response':true,'arc':this.myArc};
+}
+
+connectionObj.prototype.isReadyForBuild = function() {
+
+    //ok so we need to lookup our two places and see if they both have a GPS
+    var fromHasGps = this.checkPlace('fromPlace');
+    var toHasGps = this.checkPlace('toPlace');
+
+    return fromHasGps && toHasGps;
+}
+
+connectionObj.prototype.checkIfImInList = function(aList) {
+    for(var i = 0; i < aList.length; i++)
+    {
+        if(aList[i] == this)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+connectionObj.prototype.setFromPlace = function(place) {
+    this.fromPlace = place;
+    //if we have a valid id and everything
+    if(!place.id)
+    {
+        return;
+    }
+    if(!connectionFromByPlace[place.id])
+    {
+        connectionFromByPlace[place.id] = {};
+    }
+    //only add yourself to this list if you arent there already
+    var theList = connectionFromByPlace[place.id];
+    if(!this.checkIfImInList(theList))
+    {
+        theList.push(this); //this should update the main one right?
+    }
+}
+
+connectionObj.prototype.setToPlace = function(place) {
+    this.toPlace = place;
+    //now check if the place has an id
+    if(!place.id)
+    {
+        return;
+    }
+    if(!connectionToByPlace[place.id])
+    {
+        connectionToByPlace[place.id] = {};
+    }
+    var theList = connectionToByPlace[place.id];
+    if(!this.checkIfImInList(theList))
+    {
+        theList.push(this);
+    }
+    //DRY i know i know, but it would have been too abstracted if i had a third lookup for the global variables
+}
+
+
+connectionObj.prototype.cloneConnectionWithNewTo = function(newToPlace) {
+    var newConnection = new connectionObj(this.category,this.fromPlace,newToPlace);
+
+    for(var i = 0; i < this.friendsInConnection.length; i++)
+    {
+        newConnection.addFriend(this.friendsInConnection[i];
+    }
+    //should be enough....?
+    return newConnection;
+}
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~ end connectionObjection ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+function placeObj = function(placeJson,placeType) {
+    this.type = placeType;
+    this.category = placeType;
+
+    //this holds stuff like employer, position, start_date, etc
+    this.ourJson = placeJson;
+
+    //this holds stuff like the actual location of this employer for instance
+    this.locationJson = null;
+
+    if(this.type == 'hometown' || this.type == 'current')
+    {
+        this.locationJson = placeJson; //they are identical
+    }
+    else
+    {
+        //we have to figure them out essentially
+        if(this.placeJson.location) //sometimes employers come with locations
+        {
+            this.locationJson = this.placeJson.location;
+        }
+    }
+
+    this.name = placeJson.name;
+    this.id = placeJson.id;
+    this.friendsInPlace = [];
+    this.ourGps = null;
+
+    globalPlaceDict[this.id] = this;
+}
+
+placeObj.prototype.refreshConnectionsWithMyPlace() {
+    //loop through all connections that have my place
+    //and tell them that details are now in!
+    
+    //loop through the fromPlaces
+    if(connectionFromByPlace[this.id])
+    {
+        var theList = connecitonFromByPlace[this.id];
+        for(var i = 0; i < theList.length; i++)
+        {
+            theList[i].buildIfReady();
+        }
+    }
+    if(connectionToByPlace[this.id])
+    {
+        var theList = connectionToByPlace[this.id];
+        for(var j = 0; j < theList.length; j++)
+        {
+            theList[j].buildIfReady();
+        }
+    }
+}
+
+placeObj.prototype.easyLocationDeetsCb(response) {
+    //error check
+    if(response.error) { console.log("error on cb:"); console.log(response); throw "error on cb"; return;}
+
+    //go just store it basically
+    this.locationJson = response;
+    //check if theres a location here
+
+    if(response.location)
+    {
+        this.ourGps = response.location;
+        //go refresh these places
+        this.refreshConnectionsWithMyPlace();
+
+        return;
+    }
+    //uh oh, the location deets didnt have a gps, this is weird....
+    console.log("Weird, location deets didnt have a gps...");
+    throw "no location deets on cb";
+}
+
+placeObj.prototype.findGps = function () {
+    //basically, if we have a starting locationJson, its easy
+    if(this.locationJson)
+    {
+        //we are guaranteed to have a locaiton id, so go query that
+        FB.api('/' + this.locationJson.id, function(response) { this.easyLocationDeetsCb(response); });
+        return;
+    }
+
+    //now its a bit trickier. if we are a workplace, we should query like that
+    if(this.type == 'workplace')
+    {
+        //its funny, YQL is way better at returning good GPS results for crappy
+        //employer names. im just going to go for it, sorry fb graph but
+        //your search isnt amazing for stuff like this
+        if(this.placeJson.employer.name) //pretty sure all of them have employer names
+        {
+            this.makeYqlForGps(this.placeJson.employer.name);
+        }
+    }
+    else if(this.type == 'education')
+    {
+        //now we do the same query, but append the type of educational institution
+        if(this.placeJson.school.name)
+        {
+            var schoolName = this.placeJson.school.name;
+            if(this.placeJson.type)
+            {
+                schoolName = schoolName + " " + this.placeJson.type;
+            }
+            //now make query
+            this.makeYqlForGps(schoolName);
+        }
+    }
+    //done with firing off requests for gps locations!
+}
+
+placeObj.prototype.makeYqlForGps = function(textForYql) {
+
+    var yqlLink = "http://query.yahooapis.com/v1/public/yql";
+    var baseQuery = 'select centroid from geo.places where text = "' + textForYql + '"';
+
+    //now make this query
+    $.ajax(yqlLink,{'data':{'q':baseQuery,'format':'json'},'cache':true,'crossDomain':true,'success':function(data,textStatus,jqXHR){
+        //go do the yql callback for this object
+        this.yqlCallback(data,textStatus,jqXHR);
+    }});
+}
+
+placeObj.prototype.yqlCallback = function(data,textStatus,jqXHR) {
+    //RAWRRRrrr
+    console.log("YQL callback");
+    console.log(textStatus);
+    console.log(jqXHR);
+    console.log(data);
+
+    //go see if there are results, and if so, take the first one
+    if(data.query && data.query.results && data.query.results.place && data.query.results.place[0])
+    {
+        //take first
+        var ourGps = data.query.results.place[0].centroid; //has latitude and longitude
+        this.ourGps = ourGps;
+        //go build arcs that use this place!
+        this.refreshConnectionsWithMyPlace();
+    }
+    //if it didnt work, we are out of options pretty much so give up :(
+}
+
+/****************************** END CLASSES ***************/
 
 window.fbAsyncInit = function() {
     FB.init({
@@ -1342,99 +1652,8 @@ function handleFriendBack(response){
         return;
     }
 
-    var id = response.id;
-    //overwrite with this updated one with location and everything
-    globalFriendDict[id] = response;
-
-    //heres the deal. We will basically go ahead and directly graph
-    //this connection, except for when we have no location GPS, in which case
-    //we will go query that location GPS and add it to the todo list
-    if(response.hometown)
-    {
-        //add this location and either query or graph
-        var hometownId = response.hometown.id;
-
-        //if its already in here
-        if(globalLocationDict[hometownId])
-        {
-            //if we have this hometown location, just go graph it
-            if(globalLocationDict[hometownId].location)
-            {
-                graphFriendRelationship('hometown',response.id);
-            }
-            else //we are in the middle of a query and this will come back but not yet...
-            {
-                //add it to the todolist
-                globalLocationDict[hometownId].todoList.push( function() {
-                        graphFriendRelationship('hometown',response.id);
-                    });
-            }
-        }
-        else
-        {
-            //definitely not in there, so add it first
-            globalLocationDict[hometownId] = response.hometown;
-            globalLocationDict[hometownId].todoList = [];
-            //add our graph to the todolist
-            globalLocationDict[hometownId].todoList.push(function() {
-                    graphFriendRelationship('hometown',response.id);
-                });
-            //go query it
-            getLocationDetails(hometownId);
-        }
-    }//end of hometown check
-    else
-    {
-        //console.log("Friend " + response.name + " didnt list their hometown!");
-    }
 }
 
-function getLocationDetails(locationId)
-{
-    //hopefully the fb api has the location already, in which case this is easy!
-    FB.api('/' + locationId, function(response) { locationDeetsCb(response); });
-}
-
-function locationDeetsCb(response)
-{
-    if(response.error)
-    {
-        console.log("error");
-        console.log(response);
-        return;
-    }
-    //dont overwrite our todolist but update everything else
-    //this is bad design :-/
-    var theId = response.id;
-    for(key in response)
-    {
-        //add in each piece of data
-        globalLocationDict[theId][key] = response[key];
-    }
-
-    //if theres no gps here
-    if(!response.location)
-    {
-        alert("A location came back with no gps coords! uh oh");
-    }
-    else
-    {
-        //go through our todolist and process them
-        var ourTodoList = globalLocationDict[theId].todoList;
-        for(var i = 0; i < ourTodoList.length; i++)
-        {
-            //call that function whatever it was
-            ourTodoList[i]();
-        }
-    }
-}
-
-function findGPS(locationId)
-{
-    //honestly there are two ways to do this. either via facebook graph search
-    //or via YQL which I have always liked
-
-}
 
 function graphFriendRelationship(relationshipType,friendId)
 {
