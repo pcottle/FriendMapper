@@ -139,6 +139,8 @@ var testArc;
 var fromGps = {'latitude':37.221519,'longitude':-121.977020};
 var toGps = {'latitude':37.22159,'longitude':-76};
 
+var defaultHometown = {'id':2,'location':{'latitude':37.221519,'longitude':-121.977020}};
+
 /*****************CLASSES*******************/
 
 function arcObj(gpsFrom,gpsTo,baseRadius,startColor,endColor,thickness,maxHeight) {
@@ -149,6 +151,7 @@ function arcObj(gpsFrom,gpsTo,baseRadius,startColor,endColor,thickness,maxHeight
     this.startColor = startColor;
     this.endColor = endColor;
     this.isDoneAnimating = false;
+    this.animateDirection = 1;
     this.thickness = thickness;
     this.divisions = 25;
     this.maxHeight = maxHeight;
@@ -204,6 +207,11 @@ arcObj.prototype.initAnimate = function () {
 }
 
 arcObj.prototype.retractArc = function () {
+    this.isDoneAnimating = false;
+    this.animateDirection = -4;
+}
+
+arcObj.prototype.hideArc = function () {
     this.animateVertexAmount = 0;
 }
 
@@ -217,11 +225,11 @@ arcObj.prototype.animateArc = function() {
     //math to generate the points, it just decides which points to display.
 
     //ok so basically we just have two triangles per division, so update that number
-    this.animateStep += 1;
+    this.animateStep += this.animateDirection;
     this.animateVertexAmount = this.animateStep * 2;
 
     //if we are done
-    if(this.animateStep == this.totalAnimateSteps)
+    if(this.animateStep >= this.totalAnimateSteps || this.animateStep <= 0)
     {
         //set the right flag and return
         this.isDoneAnimating = true;
@@ -780,7 +788,7 @@ function handleMouseDown(event) {
     {
         //primary click
         mouseClickPick(event);
-        return;
+        //return;
     }
 
     //otherwise, move with mouse
@@ -984,7 +992,7 @@ function mouseClickPick(event) {
     //now switch back
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-    console.log("R:" + pixelValues[0] + " G:" + pixelValues[1] + " B:" + pixelValues[2]);
+    //console.log("R:" + pixelValues[0] + " G:" + pixelValues[1] + " B:" + pixelValues[2]);
 
     var r = pixelValues[0]; var rS = zeroPad(r,3);
     var g = pixelValues[1]; var gS = zeroPad(g,3);
@@ -996,8 +1004,14 @@ function mouseClickPick(event) {
     //see if its there
     if(globalColorTaken[cString])
     {
-        console.log("Found one!!");
-        console.log(globalColorLookup[cString]);
+        //console.log("Found one!!");
+        //console.log(globalColorLookup[cString]);
+        //also tell who it is
+        var theArc = globalColorLookup[cString];
+        if(theArc.toFriend)
+        {
+            console.log("That friend is " + theArc.toFriend.name);
+        }
         globalColorLookup[cString].retractArc();
     }
 
@@ -1023,9 +1037,6 @@ function drawSceneEither(forPicking) {
     gl.useProgram(blendShaderProgram);
     setMatrixUniforms();
 
-    testArc.animateArc();
-    testArc.drawArcStrips();
-
     //animate all the arcs if necessary
     for(var i = 0; i < animateArcList.length; i++)
     {
@@ -1034,8 +1045,9 @@ function drawSceneEither(forPicking) {
         if(response)
         {
             //remove from this list
-            animateArcList.splice(i,1);
-            i--;
+            //animateArcList.splice(i,1);
+            //i--;
+            //we no longer do this because we want to be able to retract the arc...
         }
     }
 
@@ -1195,14 +1207,12 @@ function webGLStart() {
     document.onmouseup = handleMouseUp;
     document.onmousemove = handleMouseMove;
 
-    testArc = new arcObj(fromGps,toGps,2,[1,1,1,1],[0,0,1,1],0.05,0.1);
-    testArc.buildArc();
-
     tick();
 }
 
 $j(document).ready(function(){
     webGLStart();
+    //rubberBandBall();
 
     $j(window).resize(function(){resizeWindow();});
     //initial resize
@@ -1210,6 +1220,10 @@ $j(document).ready(function(){
 
     var container = document.getElementById('earth-canvas');
     container.addEventListener('mousewheel',onMouseWheel,false);
+
+    globalLocationDict[2] = defaultHometown;
+    meObject = {};
+    meObject.hometown = defaultHometown;
 
 });
 
@@ -1319,7 +1333,7 @@ function handleFriendsBack(response) {
 
 function handleFriendBack(response){
     console.log("Individual friend back");
-    console.log(response);
+    //console.log(response);
 
     //if auth failed for some reason... like mid-session
     //im sure theres a better way to do this
@@ -1371,7 +1385,7 @@ function handleFriendBack(response){
     }//end of hometown check
     else
     {
-        console.log("Friend " + response.name + " didnt list their hometown!");
+        //console.log("Friend " + response.name + " didnt list their hometown!");
     }
 }
 
@@ -1383,6 +1397,12 @@ function getLocationDetails(locationId)
 
 function locationDeetsCb(response)
 {
+    if(response.error)
+    {
+        console.log("error");
+        console.log(response);
+        return;
+    }
     //dont overwrite our todolist but update everything else
     //this is bad design :-/
     var theId = response.id;
@@ -1418,10 +1438,10 @@ function findGPS(locationId)
 
 function graphFriendRelationship(relationshipType,friendId)
 {
-    console.log('graphing relationship of ' + relationshipType + ' between you and friend ' + globalFriendDict[friendId].name);
+    //console.log('graphing relationship of ' + relationshipType + ' between you and friend ' + globalFriendDict[friendId].name);
     var locationId = globalFriendDict[friendId][relationshipType].id;
     var locationGPS = globalLocationDict[locationId].location;
-    console.log("gps is " + locationGPS.latitude + " " + locationGPS.longitude);
+    //console.log("gps is " + locationGPS.latitude + " " + locationGPS.longitude);
 
 
     //if we have a hometown
@@ -1433,6 +1453,8 @@ function graphFriendRelationship(relationshipType,friendId)
         var thisArc = new arcObj(fromGps,toGps,2,[0,0,1,1],[1,1,1,1],0.04,0.1);
         //do all the math
         thisArc.buildArc();
+        //store ourselves
+        thisArc.toFriend = globalFriendDict[friendId];
 
         //we will animate
         animateArcList.push(thisArc);
@@ -1442,20 +1464,21 @@ function graphFriendRelationship(relationshipType,friendId)
     else
     {
         console.log('no hometown yet');
+        //add this to the todo list?
     }
 }
 
 function launchFbAvalanche() {
 
     //short circuit
-    return;
+    //return;
     console.log(fbLoginResponse);
     console.log("***********You're logged in!***************");
 
     //do a query for your friends
     FB.api('/me?fields=friends',handleFriendsBack);
     //get yourself too
-    FB.api('/me',handleMeBack);
+    //FB.api('/me',handleMeBack);
 }
 
 function handleMeBack(response){
