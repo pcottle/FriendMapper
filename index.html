@@ -1266,7 +1266,7 @@ var globalPlaceDict = {};
 //me stuff
 var meObject = null;
 var myHometown = null;
-var myLocation = null;
+var myCurrent = null;
 var myWorkplaces = [];
 var myEducations = [];
 
@@ -1307,8 +1307,8 @@ connectionObj.prototype.addFriend = function(friend) {
 connectionObj.prototype.checkPlace = function(which) {
     if(this[which] && this[which].id)
     {
-        var id = this[which];
-        if(globalPlaceDict[id].ourGps && globalPlaceDict[id].ourGps.latitude)
+        var id = this[which].id;
+        if(globalPlaceDict[id] && globalPlaceDict[id].ourGps && globalPlaceDict[id].ourGps.latitude)
         {
             return true;
         }
@@ -1341,6 +1341,7 @@ connectionObj.prototype.buildIfReady = function () {
     var toColor = categoryToToColor[this.category];
 
     var ourArc = new arcObj(fromGps,toGps,arcBaseRadius,fromColor,toColor,arcBaseThickness,arcBaseHeight);
+    ourArc.buildArc();
     this.myArc = ourArc;
 
     this.weAreBuilt = true;
@@ -1383,7 +1384,7 @@ connectionObj.prototype.setFromPlace = function(place) {
     }
     if(!connectionFromByPlace[place.id])
     {
-        connectionFromByPlace[place.id] = {};
+        connectionFromByPlace[place.id] = [];
     }
     //only add yourself to this list if you arent there already
     var theList = connectionFromByPlace[place.id];
@@ -1402,7 +1403,7 @@ connectionObj.prototype.setToPlace = function(place) {
     }
     if(!connectionToByPlace[place.id])
     {
-        connectionToByPlace[place.id] = {};
+        connectionToByPlace[place.id] = [];
     }
     var theList = connectionToByPlace[place.id];
     if(!this.checkIfImInList(theList))
@@ -1426,45 +1427,45 @@ connectionObj.prototype.cloneConnectionWithNewTo = function(newToPlace) {
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~ end connectionObjection ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-function placeObj = function(placeJson,placeType) {
+function placeObj(ourJson,placeType) {
     this.type = placeType;
     this.category = placeType;
 
     //this holds stuff like employer, position, start_date, etc
-    this.ourJson = placeJson;
+    this.ourJson = ourJson;
 
     //this holds stuff like the actual location of this employer for instance
     this.locationJson = null;
 
     if(this.type == 'hometown' || this.type == 'current')
     {
-        this.locationJson = placeJson; //they are identical
+        this.locationJson = ourJson; //they are identical
     }
     else
     {
         //we have to figure them out essentially
-        if(this.placeJson.location) //sometimes employers come with locations
+        if(this.ourJson && this.ourJson.location) //sometimes employers come with locations
         {
-            this.locationJson = this.placeJson.location;
+            this.locationJson = this.ourJson.location;
         }
     }
 
-    this.name = placeJson.name;
-    this.id = placeJson.id;
+    this.name = ourJson.name;
+    this.id = ourJson.id;
     this.friendsInPlace = [];
     this.ourGps = null;
 
     globalPlaceDict[this.id] = this;
 }
 
-placeObj.prototype.refreshConnectionsWithMyPlace() {
+placeObj.prototype.refreshConnectionsWithMyPlace = function() {
     //loop through all connections that have my place
     //and tell them that details are now in!
     
     //loop through the fromPlaces
     if(connectionFromByPlace[this.id])
     {
-        var theList = connecitonFromByPlace[this.id];
+        var theList = connectionFromByPlace[this.id];
         for(var i = 0; i < theList.length; i++)
         {
             theList[i].buildIfReady();
@@ -1480,7 +1481,7 @@ placeObj.prototype.refreshConnectionsWithMyPlace() {
     }
 }
 
-placeObj.prototype.easyLocationDeetsCb(response) {
+placeObj.prototype.easyLocationDeetsCb = function(response) {
     //error check
     if(response.error) { console.log("error on cb:"); console.log(response); throw "error on cb"; return;}
 
@@ -1501,12 +1502,18 @@ placeObj.prototype.easyLocationDeetsCb(response) {
     throw "no location deets on cb";
 }
 
+function makeEasyLocationDeetsCallback(referenceToObject) {
+    var toReturn = function(data) { referenceToObject.easyLocationDeetsCb(data); }
+    return toReturn;
+}
+
 placeObj.prototype.findGps = function () {
     //basically, if we have a starting locationJson, its easy
     if(this.locationJson)
     {
         //we are guaranteed to have a locaiton id, so go query that
-        FB.api('/' + this.locationJson.id, function(response) { this.easyLocationDeetsCb(response); });
+        var ourCallbackClosure = makeEasyLocationDeetsCallback(this);
+        FB.api('/' + this.locationJson.id, function(response) { ourCallbackClosure(response); });
         return;
     }
 
@@ -1516,20 +1523,22 @@ placeObj.prototype.findGps = function () {
         //its funny, YQL is way better at returning good GPS results for crappy
         //employer names. im just going to go for it, sorry fb graph but
         //your search isnt amazing for stuff like this
-        if(this.placeJson.employer.name) //pretty sure all of them have employer names
+        console.log("yoyo");
+        console.log(this.ourJson);
+        if(this.ourJson.employer.name) //pretty sure all of them have employer names
         {
-            this.makeYqlForGps(this.placeJson.employer.name);
+            this.makeYqlForGps(this.ourJson.employer.name);
         }
     }
     else if(this.type == 'education')
     {
         //now we do the same query, but append the type of educational institution
-        if(this.placeJson.school.name)
+        if(this.ourJson.school.name)
         {
-            var schoolName = this.placeJson.school.name;
-            if(this.placeJson.type)
+            var schoolName = this.ourJson.school.name;
+            if(this.ourJson.type)
             {
-                schoolName = schoolName + " " + this.placeJson.type;
+                schoolName = schoolName + " " + this.ourJson.type;
             }
             //now make query
             this.makeYqlForGps(schoolName);
@@ -1642,9 +1651,6 @@ function handleFriendsBack(response) {
         var fId = friend.id;
         var fName = friend.name;
 
-        //store this in the global friend dict
-        globalFriendDict[fId] = friend;
-
         //fire off a request for this friend, and a function to handle it
         FB.api('/' + fId + '?fields=id,about,name,hometown,location,work,education',function(response){ handleFriendBack(response); });
     }
@@ -1665,7 +1671,7 @@ function handleFriendBack(response){
     //here we start making that stuff 
     if(response.location)
     {
-        handleFriendLocation(response.location);
+        handleFriendCurrent(response.location);
     }
     if(response.hometown)
     {
@@ -1678,12 +1684,12 @@ function handleFriendBack(response){
     //todo: education
 }
 
-function handleFriendLocation(locationJson) {
+function handleFriendCurrent(currentJson) {
     //ok this is kinda like the others. basically, get or make the location
     //and make the connection
-    var theirLocation = getOrMake(locationJson,'location');
-    //make the connection for this between the location and the users location
-    var theConnection = new connectionObj('location',myLocation,theirLocation);
+    var theirCurrent = getOrMake(currentJson,'current');
+    //make the connection for this between the current and the users current
+    var theConnection = new connectionObj('current',myCurrent,theirCurrent);
     theConnection.buildIfReady();
     //todo: add friends on this connection and all that jazz
 }
@@ -1746,14 +1752,14 @@ function setMyHometown(hometownJson) {
     }
 }
 
-function setMyLocation(locationJson) {
-    myLocation = getOrMake(locationJson,'location');
+function setMyCurrent(currentJson) {
+    myCurrent = getOrMake(currentJson,'current');
     //loop through and set our locaiton connecitons
-    for(var i = 0; i < locationConnections.length; i++)
+    for(var i = 0; i < currentConnections.length; i++)
     {
         //set the from
-        var theConnection = locationConnections[i];
-        theConnection.setFromPlace(myLocation);
+        var theConnection = currentConnections[i];
+        theConnection.setFromPlace(myCurrent);
         theConnection.buildIfReady();
     }
 }
@@ -1770,7 +1776,7 @@ function setFirstWorkplace(workplaceJson) {
     }
 }
 
-funciton setOneOfMyWorkplaces(workplaceJson) {
+function setOneOfMyWorkplaces(workplaceJson) {
     //the critical thing here is if you are the first or not
     if(!myWorkplaces.length)
     {
@@ -1795,11 +1801,11 @@ function handleMeBack(response){
     }
     else
     {
-        alert("You haven't listed a hometown on Facebook!");
+        //alert("You haven't listed a hometown on Facebook!");
     }
     if(response.location)
     {
-        setMyLocation(response.location);
+        setMyCurrent(response.location);
     }
     if(response.work && response.work[0])
     {
