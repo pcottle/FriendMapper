@@ -144,6 +144,8 @@ var categoryToToColor = {   'hometown':white,
 //globals
 var shouldCircuit = true;
 
+var arcUnderMouse = null;
+
 var masterArcList = [];
 
 var hometownArcList = [];
@@ -238,6 +240,8 @@ function arcObj(gpsFrom,gpsTo,baseRadius,startColor,endColor,thickness,maxHeight
 
     //for the picking
     this.uniqueColor = getUniqueColorObject();
+    this.cString = this.uniqueColor.cString;
+
     globalColorLookup[this.uniqueColor.cString] = this;
 }
 
@@ -871,6 +875,8 @@ mat4.identity(earthRotationMatrix);
 
 function handleMouseDown(event) {
     event.preventDefault();
+    mouseDown = true;
+
     if(event.which == 1)
     {
         //primary click
@@ -879,7 +885,6 @@ function handleMouseDown(event) {
     }
 
     //otherwise, move with mouse
-    mouseDown = true;
     lastMouseX = event.clientX;
     lastMouseY = event.clientY;
 }
@@ -922,8 +927,27 @@ function handleMouseUp(event) {
 
 
 function handleMouseMove(event) {
+    //phantom events
+    if(event.clientX == lastMouseX && event.clientY == lastMouseY)
+    {
+        return;
+    }
+
     //want to stop the tween if we are right now
+    arcUnderMouse = getArcAtMousePos(event.clientX,event.clientY);
+    if(arcUnderMouse)
+    {
+        //go ahead and set the cursor
+        $j('body').css('cursor','pointer');
+    }
+    else
+    {
+        $j('body').css('cursor','auto');
+    }
+
     if (!mouseDown) {
+        lastMouseX = event.clientX;
+        lastMouseY = event.clientY;
         return;
     }
     var newX = event.clientX;
@@ -1048,10 +1072,17 @@ function initEarthBuffers() {
 
 function mouseClickPick(event) {
     //get the coordinates on our canvas
-    //console.log(event.clientX + " and " + event.clientY);
     var x = event.clientX;
     var y = event.clientY;
 
+    var theArc = getArcAtMousePos(x,y);
+    if(theArc)
+    {
+        arcClick(theArc);
+    }
+}
+
+function getArcAtMousePos(x,y) {
     //flip y
     y = gl.viewportHeight - y;
 
@@ -1078,18 +1109,11 @@ function mouseClickPick(event) {
     //see if its there
     if(globalColorTaken[cString])
     {
-        //console.log("Found one!!");
-        //console.log(globalColorLookup[cString]);
         //also tell who it is
         var theArc = globalColorLookup[cString];
-        if(theArc.toFriend)
-        {
-            console.log("That friend is " + theArc.toFriend.name);
-        }
-        //globalColorLookup[cString].retractArc();
-        arcClick(globalColorLookup[cString]);
+        return theArc;
     }
-
+    return null;
 }
 
 function arcClick(anArc)
@@ -1123,20 +1147,27 @@ function drawSceneEither(forPicking) {
     lighting();
     translateAndRotate();
 
+    gl.useProgram(earthShaderProgram);
     setMatrixUniforms();
-    //here, we draw the earth, TODO: draw earth white
+    //here, we draw the earth, TODO: draw earth white?
     drawEarth();
 
     gl.useProgram(blendShaderProgram);
     setMatrixUniforms();
 
-    //animate all the arcs if necessary
-
     for(var i = 0; i < masterArcList.length; i++)
     {
         var theArc = masterArcList[i];
         theArc.animateArc();
-        if(true)
+        if(theArc == arcUnderMouse && !forPicking)
+        {
+            gl.useProgram(whiteShaderProgram);
+            setMatrixUniforms();
+            theArc.drawArcStripsWhite();
+            gl.useProgram(blendShaderProgram);
+            setMatrixUniforms();
+        }
+        else
         {
             //draw the arc
             if(forPicking)
@@ -1148,14 +1179,15 @@ function drawSceneEither(forPicking) {
                 theArc.drawArcStrips();
             }
         }
-        else
-        { 
-            gl.useProgram(whiteShaderProgram);
-            setMatrixUniforms();
-            theArc.drawArcStripsWhite();
-            gl.useProgram(blendShaderProgram);
-            setMatrixUniforms();
-        }
+    }
+
+    if(false)
+    {
+        gl.useProgram(whiteShaderProgram);
+        setMatrixUniforms();
+        arcUnderMouse.drawArcStripsWhite();
+        gl.useProgram(blendShaderProgram);
+        setMatrixUniforms();
     }
 }
 
@@ -1391,7 +1423,6 @@ function doEarthFlyin() {
 
 function scaleTweenComplete()
 {
-    rubberBandBall();
     rubberBandBall();
 }
 
