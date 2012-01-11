@@ -144,15 +144,31 @@ var categoryToToColor = {   'hometown':white,
 //globals
 var shouldCircuit = false;
 
-var whiteArcNum = 10;
+var masterArcList = [];
 
-var animateArcList = [];
-var drawArcList = [];
+var hometownArcList = [];
+var currentArcList = [];
+var workplaceArcList = [];
+var educationArcList = [];
+
+var categoryToArcList = {   'education':educationArcList,
+                            'workplace':workplaceArcList,
+                            'hometown':hometownArcList,
+                            'current':currentArcList
+                        };
+
+var currentDisplayCategory = 'hometown';
+
 var globalColorLookup = {};
 var globalColorTaken = {};
 
 //camera stuff
-var zoomAmount = -6;
+var zoomAmount = -20;
+var currentZoomLevel = -6;
+var ourZoomTween = null;
+var zoomVariablesForTween = null;
+
+
 var globalYrotate = 180;
 var globalXrotate = 0;
 var angleLimit = 85;
@@ -231,12 +247,21 @@ arcObj.prototype.initAnimate = function () {
 
 }
 
+arcObj.prototype.expandArc = function () {
+    this.isHidden = false;
+    this.isDoneAnimating = false;
+    this.animateDirection = 1;
+    this.animateStep = 0;
+}
+
 arcObj.prototype.retractArc = function () {
     this.isDoneAnimating = false;
     this.animateDirection = -4;
 }
 
 arcObj.prototype.hideArc = function () {
+    this.isDoneAnimating = true;
+    this.isHidden = true;
     this.animateVertexAmount = 0;
 }
 
@@ -563,13 +588,9 @@ function initGL(canvas) {
 }
 
 function onMouseWheel(event) {
-
     event.preventDefault();
 
-    zoomAmount += event.wheelDeltaY * 0.003;
-
-
-
+    zoomAmount += event.originalEvent.wheelDeltaY * 0.003;
 }
 
 function resizeWindow()
@@ -862,6 +883,37 @@ function handleMouseDown(event) {
     lastMouseY = event.clientY;
 }
 
+function fmButtonClick() {
+    //get the id
+    var myCategory = $j(this).attr('id');
+    if(myCategory)
+    {
+        currentDisplayCategory = myCategory;
+    }
+
+    var otherButtons = $j('.fmButton:not(#' + myCategory + ')');
+    var myButton = $j(this);
+
+    //unpress all other buttons, add depressed to this one
+    otherButtons.removeClass('depressed');
+    otherButtons.addClass('popped');
+
+    myButton.removeClass('popped');
+    myButton.addClass('depressed');
+    expandArcsOfList(categoryToArcList[myCategory]);
+
+    //go through and hide others...
+    for(var i = 0; i < categories.length; i++)
+    {
+        var theCat = categories[i];
+        if(theCat != myCategory)
+        {
+            retractArcsOfList(categoryToArcList[theCat]);
+        }
+    }
+    //done?
+
+}
 
 function handleMouseUp(event) {
     mouseDown = false;
@@ -1084,38 +1136,28 @@ function drawSceneEither(forPicking) {
     setMatrixUniforms();
 
     //animate all the arcs if necessary
-    for(var i = 0; i < animateArcList.length; i++)
-    {
-        var response = animateArcList[i].animateArc();
-        //if the arc is done animating, remove it
-        if(response)
-        {
-            //remove from this list
-            //animateArcList.splice(i,1);
-            //i--;
-            //we no longer do this because we want to be able to retract the arc...
-        }
-    }
 
-    for(var i = 0; i < drawArcList.length; i++)
+    for(var i = 0; i < masterArcList.length; i++)
     {
-        if(i!=whiteArcNum)
+        var theArc = masterArcList[i];
+        theArc.animateArc();
+        if(true)
         {
             //draw the arc
             if(forPicking)
             {
-                drawArcList[i].drawArcStripsForPicking();
+                theArc.drawArcStripsForPicking();
             }
             else
             {
-                drawArcList[i].drawArcStrips();
+                theArc.drawArcStrips();
             }
         }
         else
         { 
             gl.useProgram(whiteShaderProgram);
             setMatrixUniforms();
-            drawArcList[i].drawArcStripsWhite();
+            theArc.drawArcStripsWhite();
             gl.useProgram(blendShaderProgram);
             setMatrixUniforms();
         }
@@ -1141,30 +1183,21 @@ function generateRandomArc() {
     var thisArc = new arcObj(fromGps,toGps,2,[0,0,1,arcAlpha],[1,1,1,arcAlpha],0.04,0.1);
     thisArc.buildArc();
 
-    animateArcList.push(thisArc);
-    drawArcList.push(thisArc);
+    masterArcList.push(thisArc);
 }
 
-function hideAllConnections(theList) {
+function expandArcsOfList(theList) {
     for(var i = 0; i < theList.length; i++)
     {
-        var theArc = theList[i].myArc;
-        if(theArc)
-        {
-            theArc.retractArc();
-        }
+        theList[i].expandArc();
     }
 }
 
-function testBigArc() {
-    var asd = -80;
-    var fromGps = {'latitude':0,'longitude':asd};
-    var toGps = {'latitude':0,'longitude':90};
-
-    var thisArc = new arcObj(fromGps,toGps,2,[0,1,0,1],[0,0,1,1],0.04,0.1);
-    thisArc.buildArc();
-    animateArcList.push(thisArc);
-    drawArcList.push(thisArc);
+function retractArcsOfList(theList) {
+    for(var i = 0; i < theList.length; i++)
+    {
+        theList[i].retractArc();
+    }
 }
 
 function cameraPerspectiveClear() {
@@ -1347,11 +1380,32 @@ function webGLStart() {
     document.onmousemove = handleMouseMove;
 
     tick();
+    //zoom in to earth
+    doEarthFlyin();
+}
+
+function doEarthFlyin() {
+    zoomAmount = -20;
+    if(ourZoomTween)
+    {
+        ourZoomTween.stop();
+    }
+
+    zoomVariablesForTween = {'zoom':zoomAmount};
+
+    ourZoomTween = new TWEEN.Tween(zoomVariablesForTween).to({'zoom':-6},tweenTime).onUpdate(zoomTweenUpdate);
+    ourZoomTween.easing(tweenEasing);
+    ourZoomTween.start();
+} 
+
+function zoomTweenUpdate() {
+    zoomAmount = zoomVariablesForTween.zoom;
 }
 
 $j(document).ready(function(){
-    webGLStart();
     TWEEN.start();
+    webGLStart();
+
     if(shouldCircuit)
     {
         rubberBandBall();
@@ -1361,8 +1415,12 @@ $j(document).ready(function(){
     //initial resize
     resizeWindow();
 
-    var container = document.getElementById('earth-canvas');
-    container.addEventListener('mousewheel',onMouseWheel,false);
+    //var container = document.getElementById('earth-canvas');
+    $j(document).bind('mousewheel',onMouseWheel);
+
+    //buttons also
+    $j('.fmButton').click(fmButtonClick);
+
 
 });
 
@@ -1398,6 +1456,7 @@ var myWorkplaces = [];
 var myEducations = [];
 
 //the lookup
+categories = ['hometown','workplace','current','education'];
 categoryToList = {'hometown':hometownConnections,'workplace':workplaceConnections,
                 'current':currentConnections,'education':educationConnections};
 
@@ -1492,10 +1551,19 @@ connectionObj.prototype.buildIfReady = function () {
     this.myArc = myArc;
 
     this.weAreBuilt = true;
+    //by default dont show anything
+    this.myArc.isDoneAnimating = true;
+    this.myArc.isHidden = true;
 
-    //go ahead and start drawing and animating
-    animateArcList.push(myArc);
-    drawArcList.push(myArc);
+    //add to necessary lists
+    var ourListToAdd = categoryToArcList[this.category];
+    ourListToAdd.push(myArc);
+    masterArcList.push(myArc);
+    //also, if we are displaying this, show it
+    if(this.category == currentDisplayCategory)
+    {
+        this.myArc.expandArc();
+    }
 
 
     //return the response and the arc
@@ -1862,6 +1930,8 @@ function fbLogin() {
             fbLoginResponse = response;
 
             removeAuthButton();
+            rotateOn = false;
+
             launchFbAvalanche();
 
          } else {
@@ -1890,7 +1960,7 @@ function handleFriendsBack(response) {
 
     //RATE LIMIT: fix not only first 3 friends
     for(var i = 0; i < friendList.length; i++)
-    //for(var i =0; i < 10; i++)
+    //for(var i =0; i < 300; i++)
     {
         var friend = friendList[i];
 
@@ -2206,6 +2276,12 @@ function initFacebook(){
 
     <canvas id="earth-canvas" style="border: none;" width="500px" height="500px"></canvas>
 
+<div class="fmButtonHolder">
+    <div id="hometown" class="fmButton buttonGradient depressed"> H </div>
+    <div id="current" class="fmButton buttonGradient popped"> C </div>
+    <div id="education" class="fmButton buttonGradient popped"> E </div>
+    <div id="workplace" class="fmButton buttonGradient popped"> W </div>
+</div>
 </body>
 
 </html>

@@ -124,6 +124,75 @@ h1 {
     height:30px;
 }
 
+.fmButtonHolder {
+    width:100%;
+    position:absolute;
+    bottom:30px;
+    height:60px;
+    text-align:center;
+    padding:0px;
+}
+
+.fmButton {
+    position:relative;
+    display:inline-block;
+    width:30px;
+    border: 1px solid white;
+    padding:10px;
+    text-align:center;
+    vertical-align:center;
+    cursor:pointer;
+
+    -moz-border-radius: 7px;
+    -webkit-border-radius: 7px;
+    border-radius: 7px;
+
+}
+
+.depressed {
+    /*IE 7 AND 8 DO NOT SUPPORT BORDER RADIUS*/
+    -moz-box-shadow: inset 0px 0px 10px #000000;
+    -webkit-box-shadow: inset 0px 0px 10px #000000;
+    box-shadow: inset 0px 0px 10px #000000;
+    /*Inner elements should not cover inner shadows*/
+    /*Chrome renders inset shadows incorrectly with border-radius*/
+    /*IE 7 AND 8 DO NOT SUPPORT INSET SHADOWS*/
+    filter: progid: DXImageTransform.Microsoft.gradient(startColorstr = '#262525', endColorstr = '#e6e1e2');
+    /*INNER ELEMENTS MUST NOT BREAK THIS ELEMENTS BOUNDARIES*/
+    /*Element must have a height (not auto)*/
+    /*All filters must be placed together*/
+    -ms-filter: "progid: DXImageTransform.Microsoft.gradient(startColorstr = '#262525', endColorstr = '#e6e1e2')";
+    /*Element must have a height (not auto)*/
+    /*All filters must be placed together*/
+}
+
+.popped {
+    /*IE 7 AND 8 DO NOT SUPPORT BORDER RADIUS*/
+    -moz-box-shadow: 0px 0px 10px #000000;
+    -webkit-box-shadow: 0px 0px 10px #000000;
+    box-shadow: 0px 0px 10px #000000;
+    /*Inner elements should not cover inner shadows*/
+    filter: progid: DXImageTransform.Microsoft.gradient(startColorstr = '#262525', endColorstr = '#e6e1e2');
+    /*INNER ELEMENTS MUST NOT BREAK THIS ELEMENTS BOUNDARIES*/
+    /*Element must have a height (not auto)*/
+    /*All filters must be placed together*/
+    -ms-filter: "progid: DXImageTransform.Microsoft.gradient(startColorstr = '#262525', endColorstr = '#e6e1e2')";
+    /*Element must have a height (not auto)*/
+    /*All filters must be placed together*/
+}
+
+.buttonGradient {
+    background-image: -moz-linear-gradient(top, #262525, #e6e1e2);
+    background-image: -ms-linear-gradient(top, #262525, #e6e1e2);
+    background-image: -o-linear-gradient(top, #262525, #e6e1e2);
+    background-image: -webkit-gradient(linear, center top, center bottom, from(#262525), to(#e6e1e2));
+    background-image: -webkit-linear-gradient(top, #262525, #e6e1e2);
+    background-image: linear-gradient(top, #262525, #e6e1e2);
+    -moz-background-clip: padding;
+    -webkit-background-clip: padding-box;
+    background-clip: padding-box;
+}
+
 .smooth,.anArrow {
    -webkit-transition: all 700ms cubic-bezier(0.260, 0.860, 0.440, 0.985);
   -moz-transition: all 700ms cubic-bezier(0.260, 0.860, 0.440, 0.985);
