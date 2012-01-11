@@ -8,7 +8,29 @@
 
 <script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
 <script type="text/javascript" src="webgl-utils.js"></script>
+<script type="text/javascript" src="Tween.js"></script>
 <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+
+<script id="white-vs" type="x-shader/x-vertex">
+attribute vec3 aVertexPosition;
+
+uniform mat4 uMVMatrix;
+uniform mat4 uPMatrix;
+
+void main(void) {
+    gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+}
+</script>
+
+<script id="white-fs" type="x-shader/x-fragment">
+
+precision mediump float;
+
+void main(void) {
+    gl_FragColor = vec4(1,1,1,1);
+}
+
+</script>
 
 <script id="shader-box-vs" type="x-shader/x-vertex">
 attribute vec3 aVertexPosition;
@@ -101,7 +123,7 @@ var arcBaseRadius = 2;
 var arcBaseThickness = 0.04;
 var arcBaseHeight = 0.1;
 
-var arcAlpha = 0.8;
+var arcAlpha = 0.7;
 
 var white = [1,1,1,arcAlpha];
 var blue = [0,0,1,arcAlpha];
@@ -120,8 +142,9 @@ var categoryToToColor = {   'hometown':white,
                             'workplace':white};
 
 //globals
-var shouldCircuit = true;
+var shouldCircuit = false;
 
+var whiteArcNum = 10;
 
 var animateArcList = [];
 var drawArcList = [];
@@ -133,6 +156,13 @@ var zoomAmount = -6;
 var globalYrotate = 180;
 var globalXrotate = 0;
 var angleLimit = 85;
+var rotateOn = true;
+
+var rotVariablesForTween = {'x':globalXrotate,'y':globalYrotate};
+var ourTween = null;
+var tweenTime = 1000;
+var tweenEasing = TWEEN.Easing.Cubic.EaseInOut;
+var ourTweenOn = false;
 
 
 /*****************CLASSES*******************/
@@ -149,6 +179,7 @@ function arcObj(gpsFrom,gpsTo,baseRadius,startColor,endColor,thickness,maxHeight
     this.thickness = thickness;
     this.divisions = 25;
     this.maxHeight = maxHeight;
+    this.isHidden = false;
 
     //animate stuff
     this.animateStep = 0;
@@ -227,6 +258,10 @@ arcObj.prototype.animateArc = function() {
     {
         //set the right flag and return
         this.isDoneAnimating = true;
+        if(this.animateStep == 0)
+        {
+            this.isHidden = true;
+        }
         return true;
     }
     //still have more to go
@@ -405,11 +440,24 @@ arcObj.prototype.refreshBuffers = function () {
 }
 
 arcObj.prototype.drawArcStrips = function() {
+    if(this.isHidden)
+    {
+        return;
+    }
     this.drawArcStripsEither(false);
 }
 
 arcObj.prototype.drawArcStripsForPicking = function() {
     this.drawArcStripsEither(true);
+}
+
+arcObj.prototype.drawArcStripsWhite = function() {
+    //bind buffers, use different program
+
+    gl.bindBuffer(gl.ARRAY_BUFFER,this.myVertexBuffer);
+    gl.vertexAttribPointer(whiteShaderProgram.vertexPositionAttribute,this.myVertexBuffer.itemSize, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, this.animateVertexAmount);
+
 }
 
 arcObj.prototype.drawArcStripsEither = function(forPicking) {
@@ -607,6 +655,7 @@ var lColorB = 0.8;
 
 var earthShaderProgram;
 var blendShaderProgram;
+var whiteShaderProgram;
 
 function initShaders() {
     //earth shader
@@ -621,6 +670,15 @@ function initShaders() {
     var blendVertexShader = getShader(gl, "shader-box-vs");
     var blendFragShader = getShader(gl, "shader-box-fs");
 
+    //white shader
+    var whiteVertexShader = getShader(gl, "white-vs");
+    var whiteFragShader = getShader(gl, "white-fs");
+
+    whiteShaderProgram = gl.createProgram();
+    gl.attachShader(whiteShaderProgram, whiteVertexShader);
+    gl.attachShader(whiteShaderProgram, whiteFragShader);
+    gl.linkProgram(whiteShaderProgram);
+
     earthShaderProgram = gl.createProgram();
     gl.attachShader(earthShaderProgram, vertexShader);
     gl.attachShader(earthShaderProgram, fragmentShader);
@@ -632,6 +690,7 @@ function initShaders() {
     gl.linkProgram(blendShaderProgram);
 
     if (!gl.getProgramParameter(earthShaderProgram, gl.LINK_STATUS) || 
+        !gl.getProgramParameter(whiteShaderProgram, gl.LINK_STATUS) || 
             !gl.getProgramParameter(blendShaderProgram, gl.LINK_STATUS)){
         alert("Could not initialise shaders");
     }
@@ -667,6 +726,15 @@ function initShaders() {
 
     blendShaderProgram.pMatrixUniform = gl.getUniformLocation(blendShaderProgram,"uPMatrix");
     blendShaderProgram.mvMatrixUniform = gl.getUniformLocation(blendShaderProgram,"uMVMatrix");
+
+    //white shader
+    gl.useProgram(whiteShaderProgram);
+
+    whiteShaderProgram.vertexPositionAttribute = gl.getAttribLocation(whiteShaderProgram,"aVertexPosition");
+    gl.enableVertexAttribArray(whiteShaderProgram.vertexPositionAttribute);
+
+    whiteShaderProgram.pMatrixUniform = gl.getUniformLocation(whiteShaderProgram,"uPMatrix");
+    whiteShaderProgram.mvMatrixUniform = gl.getUniformLocation(whiteShaderProgram,"uMVMatrix");
 
     gl.useProgram(earthShaderProgram);
 }
@@ -756,6 +824,9 @@ function setMatrixUniforms() {
     gl.uniformMatrix4fv(blendShaderProgram.pMatrixUniform, false, pMatrix);
     gl.uniformMatrix4fv(blendShaderProgram.mvMatrixUniform, false, mvMatrix);
 
+    gl.uniformMatrix4fv(whiteShaderProgram.pMatrixUniform, false, pMatrix);
+    gl.uniformMatrix4fv(whiteShaderProgram.mvMatrixUniform, false, mvMatrix);
+
     var normalMatrix = mat3.create();
     mat4.toInverseMat3(mvMatrix, normalMatrix);
     mat3.transpose(normalMatrix);
@@ -798,6 +869,7 @@ function handleMouseUp(event) {
 
 
 function handleMouseMove(event) {
+    //want to stop the tween if we are right now
     if (!mouseDown) {
         return;
     }
@@ -980,9 +1052,13 @@ function arcClick(anArc)
     {
         console.log("this arcs connection:");
         console.log(anArc.myConnection);
+        //going there
+        var theGps = anArc.myConnection.toPlace.ourGps;
+        tweenToGps(theGps.latitude,theGps.longitude);
     }
     else
     {
+        tweenToGps(anArc.gpsFrom.latitude,anArc.gpsFrom.longitude);
         anArc.retractArc();
     }
 }
@@ -1023,14 +1099,25 @@ function drawSceneEither(forPicking) {
 
     for(var i = 0; i < drawArcList.length; i++)
     {
-        //draw the arc
-        if(forPicking)
+        if(i!=whiteArcNum)
         {
-            drawArcList[i].drawArcStripsForPicking();
+            //draw the arc
+            if(forPicking)
+            {
+                drawArcList[i].drawArcStripsForPicking();
+            }
+            else
+            {
+                drawArcList[i].drawArcStrips();
+            }
         }
         else
-        {
-            drawArcList[i].drawArcStrips();
+        { 
+            gl.useProgram(whiteShaderProgram);
+            setMatrixUniforms();
+            drawArcList[i].drawArcStripsWhite();
+            gl.useProgram(blendShaderProgram);
+            setMatrixUniforms();
         }
     }
 }
@@ -1128,6 +1215,16 @@ function translateAndRotate() {
 
     mat4.translate(mvMatrix, [0, 0, zoomAmount]);
 
+    //cap variables
+    if(globalYrotate > 360)
+    {
+        globalYrotate -= 360;
+    }
+    if(globalYrotate < -360)
+    {
+        globalYrotate += 360;
+    }
+
     //do rotation for camera
     var newRot = mat4.create();
     mat4.identity(newRot);
@@ -1181,13 +1278,48 @@ function drawEarth() {
 //slowly rotate
 function slowRotate()
 {
-    globalYrotate += 0.1;
+    if(rotateOn)
+    {
+        globalYrotate += 0.1;
+    }
     return;
-    var rMatrix = mat4.create();
-    mat4.identity(rMatrix);
-    mat4.rotate(rMatrix,degToRad(0.1),[0,1,0]);
+}
 
-    mat4.multiply(rMatrix,earthRotationMatrix,earthRotationMatrix);
+function convertGpsToRotVariables(lat,long) {
+    //well globalYrotate is just 90 + that long
+    var yRotate = 90 + -long;
+    var xRotate = lat;
+
+    return {'xRotate':xRotate,'yRotate':yRotate};
+}
+
+function tweenUpdate() {
+    globalXrotate = rotVariablesForTween.x;
+    globalYrotate = rotVariablesForTween.y;
+}
+
+function tweenDone() {
+    ourTweenOn = false;
+}
+
+function tweenToGps(lat,long) {
+    var rotCorrespondingToGps = convertGpsToRotVariables(lat,long);
+    //refresh our current rotvaribales
+    rotVariablesForTween = {'x':globalXrotate,'y':globalYrotate};
+
+    var x = rotCorrespondingToGps.xRotate;
+    var y = rotCorrespondingToGps.yRotate;
+
+    if(ourTween)
+    {
+        ourTween.stop();
+    }
+
+    ourTween = new TWEEN.Tween(rotVariablesForTween).to({x:x,y:y},tweenTime).onUpdate(tweenUpdate).onComplete(tweenDone);
+    ourTween.easing(tweenEasing);
+    ourTweenOn = true;
+    ourTween.start();
+
 }
 
 function tick() {
@@ -1219,6 +1351,7 @@ function webGLStart() {
 
 $j(document).ready(function(){
     webGLStart();
+    TWEEN.start();
     if(shouldCircuit)
     {
         rubberBandBall();
@@ -1756,8 +1889,8 @@ function handleFriendsBack(response) {
     var friendList = response.friends.data;
 
     //RATE LIMIT: fix not only first 3 friends
-    //for(var i = 0; i < friendList.length; i++)
-    for(var i =0; i < 100; i++)
+    for(var i = 0; i < friendList.length; i++)
+    //for(var i =0; i < 10; i++)
     {
         var friend = friendList[i];
 
@@ -1865,7 +1998,8 @@ function launchFbAvalanche() {
 function getOrMake(placeJson,placeType) {
     var thePlace = null;
 
-    var theId = null;
+    var theId = "ruhrho";
+
     //the id actually will be different if its an employer or school
     if(placeType == 'current' || placeType == 'hometown')
     {
@@ -1879,17 +2013,14 @@ function getOrMake(placeJson,placeType) {
     {
         if(!placeJson.school)
         {
-            console.log("trying to make this education and failed cause");
+            /*console.log("trying to make this education and failed cause");
             console.log(placeJson);
-            throw "wtf school wth no school id?";
+            throw "wtf school wth no school id?";*/
         }
-        theId = placeJson.school.id;
-    }
-    if(!theId)
-    {
-        console.log("this hometown");
-        console.log(placeJson);
-        throw "invalid json, no id present for this type " + placeType;
+        else
+        {
+            theId = placeJson.school.id;
+        }
     }
 
     if(!globalPlaceDict[theId])
@@ -2037,7 +2168,7 @@ function handleMeBack(response){
         for(var j = 1; j < response.education.length; j++)
         {
             var thisEducation = response.education[j];
-            duplicateEducationConnections(response.education);
+            duplicateEducationConnections(thisEducation);
         }
     }
 }
