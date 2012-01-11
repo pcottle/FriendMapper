@@ -142,7 +142,7 @@ var categoryToToColor = {   'hometown':white,
                             'workplace':white};
 
 //globals
-var shouldCircuit = false;
+var shouldCircuit = true;
 
 var masterArcList = [];
 
@@ -163,16 +163,17 @@ var globalColorLookup = {};
 var globalColorTaken = {};
 
 //camera stuff
-var zoomAmount = -20;
+var zoomAmount = -6;
 var currentZoomLevel = -6;
-var ourZoomTween = null;
-var zoomVariablesForTween = null;
 
+var scaleAmount = 1;
+var ourScaleTween = null;
+var scaleVariablesForTween = null;
 
 var globalYrotate = 180;
 var globalXrotate = 0;
 var angleLimit = 85;
-var rotateOn = true;
+var rotateOn = false;
 
 var rotVariablesForTween = {'x':globalXrotate,'y':globalYrotate};
 var ourTween = null;
@@ -929,14 +930,7 @@ function handleMouseMove(event) {
     var newY = event.clientY;
 
     var deltaX = newX - lastMouseX;
-    var newRotationMatrix = mat4.create();
-    mat4.identity(newRotationMatrix);
-    mat4.rotate(newRotationMatrix, degToRad(deltaX / 10), [0, 1, 0]);
-
     var deltaY = newY - lastMouseY;
-    mat4.rotate(newRotationMatrix, degToRad(deltaY / 10), [1, 0, 0]);
-
-    //mat4.multiply(newRotationMatrix, earthRotationMatrix, earthRotationMatrix);
 
     globalYrotate += deltaX / 10;
     globalXrotate += deltaY / 10;
@@ -1129,6 +1123,7 @@ function drawSceneEither(forPicking) {
     lighting();
     translateAndRotate();
 
+    setMatrixUniforms();
     //here, we draw the earth, TODO: draw earth white
     drawEarth();
 
@@ -1244,8 +1239,6 @@ function translateAndRotate() {
 
     mat4.identity(mvMatrix);
 
-    mvPushMatrix();
-
     mat4.translate(mvMatrix, [0, 0, zoomAmount]);
 
     //cap variables
@@ -1261,7 +1254,6 @@ function translateAndRotate() {
     //do rotation for camera
     var newRot = mat4.create();
     mat4.identity(newRot);
-    //mat4.rotate(newRot,degToRad(globalYrotate), [0,1,0]);
 
     //now need to get the other axis
     var secondRotAxis = vec3.create();
@@ -1269,18 +1261,14 @@ function translateAndRotate() {
     secondRotAxis[0] = 1;
     mat4.multiplyVec3(newRot,secondRotAxis,result);
 
-    /*console.log("the result");
-    console.log(result[0]);
-    console.log(result[1]);
-    console.log(result[2]);*/
-
     mat4.rotate(newRot,degToRad(globalXrotate), [result[0],result[1],result[2]]);
     mat4.rotate(newRot,degToRad(globalYrotate), [0,1,0]);
-
 
     //now multiply earth rotation
     mat4.identity(earthRotationMatrix);
     mat4.multiply(earthRotationMatrix,newRot);
+
+    mat4.scale(mvMatrix,[scaleAmount,scaleAmount,scaleAmount]);
 
     mat4.multiply(mvMatrix, earthRotationMatrix);
     setMatrixUniforms();
@@ -1289,6 +1277,8 @@ function translateAndRotate() {
 function drawEarth() {
 
     gl.useProgram(earthShaderProgram);
+    setMatrixUniforms();
+
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, earthTexture);
     gl.uniform1i(earthShaderProgram.samplerUniform, 0);
@@ -1385,21 +1375,28 @@ function webGLStart() {
 }
 
 function doEarthFlyin() {
-    zoomAmount = -20;
-    if(ourZoomTween)
+    scaleAmount = 0.01;
+    if(ourScaleTween)
     {
-        ourZoomTween.stop();
+        ourScaleTween.stop();
     }
 
-    zoomVariablesForTween = {'zoom':zoomAmount};
+    scaleVariablesForTween = {'scale':scaleAmount};
 
-    ourZoomTween = new TWEEN.Tween(zoomVariablesForTween).to({'zoom':-6},tweenTime).onUpdate(zoomTweenUpdate);
-    ourZoomTween.easing(tweenEasing);
-    ourZoomTween.start();
+    ourScaleTween = new TWEEN.Tween(scaleVariablesForTween).to({'scale':1},tweenTime*1.5).onUpdate(scaleTweenUpdate);
+    setTimeout('scaleTweenComplete()',tweenTime*0.5);
+    ourScaleTween.easing(TWEEN.Easing.Quartic.EaseInOut);
+    ourScaleTween.start();
 } 
 
-function zoomTweenUpdate() {
-    zoomAmount = zoomVariablesForTween.zoom;
+function scaleTweenComplete()
+{
+    rubberBandBall();
+    rubberBandBall();
+}
+
+function scaleTweenUpdate() {
+    scaleAmount = scaleVariablesForTween.scale;
 }
 
 $j(document).ready(function(){
@@ -1408,7 +1405,7 @@ $j(document).ready(function(){
 
     if(shouldCircuit)
     {
-        rubberBandBall();
+        //rubberBandBall();
     }
 
     $j(window).resize(function(){resizeWindow();});
@@ -1930,7 +1927,6 @@ function fbLogin() {
             fbLoginResponse = response;
 
             removeAuthButton();
-            rotateOn = false;
 
             launchFbAvalanche();
 
