@@ -4,8 +4,8 @@
 <title> Friend Mapper!</title>
 <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
 
-<link href="style.css" rel="stylesheet" type="text/css"/>
 <link href="jquery.bubblepopup.v2.3.1.css" rel="stylesheet" type="text/css"/>
+<link href="style.css" rel="stylesheet" type="text/css"/>
 
 <script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
 <script type="text/javascript" src="webgl-utils.js"></script>
@@ -127,6 +127,7 @@ var arcBaseHeight = 0.1;
 
 var arcAlpha = 0.7;
 
+var bubbleTheme = 'all-azure';
 var white = [1,1,1,arcAlpha];
 var blue = [0,0,1,arcAlpha];
 var green = [0,1,0,arcAlpha];
@@ -1145,21 +1146,72 @@ function arcClick(anArc)
         console.log("this arcs connection:");
         console.log(anArc.myConnection);
         //going there
-        var theGps = anArc.myConnection.toPlace.ourGps;
-        tweenToGps(theGps.latitude,theGps.longitude);
+        fbClickOnArc(anArc);
     }
     else
     {
         tweenToGps(anArc.gpsFrom.latitude,anArc.gpsFrom.longitude);
         anArc.retractArc();
         var showString = "This location at " + anArc.gpsFrom.latitude + " and " + anArc.gpsFrom.longitude;
-        thePopup.ShowBubblePopup({      'openingDelay':tweenTime*0.8,
-                                        'closingSpeed':100,
-                                        'distance':'40px',
-                                        'innerHtml':showString,
-                                        'innerHtmlStyle':{'max-width':'300px'},
-                });
+        bubbleShow(showString);
     }
+}
+
+function fbClickOnArc(anArc) {
+    //all the stuff for when you click on an arc that has a facebook connection
+    var theGps = anArc.myConnection.toPlace.ourGps;
+    tweenToGps(theGps.latitude,theGps.longitude);
+
+    //go ahead and build the display string
+    var innerHtml = buildHtmlForBubble(anArc.myConnection);
+    bubbleShow(innerHtml);
+}
+
+function buildHtmlForBubble(aConnection) {
+    var bHtml = "";
+    bHtml += "<b>" + aConnection.toPlace.name + "</b>";
+    bHtml += "<p>" + aConnection.category[0] + aConnection.category.slice(1) + " connection</p>";
+
+    var catToVerb = {'hometown':'are from here',
+                    'current':'live here',
+                    'workplace':'have worked here',
+                    'education':'have studied here'};
+
+    bHtml += "<p> Friends who " + catToVerb[aConnection.category] + ":</p>";
+    bHtml += "<ul>";
+    
+    var fList = aConnection.friendsInConnection;
+    for(var i = 0; i < fList.length; i++)
+    {
+        bHtml += "<li>";
+        bHtml += fList[i].name;
+        bHtml += '<img style="display:inline-block" src="' + fList[i].imageLink + '"/>';
+        bHtml += "</li>";
+    }
+    bHtml += "</ul>";
+
+    if(aConnection.toPlace.locationJson.description)
+    {
+        bHtml += "<p>" + aConnection.toPlace.locationJson.description + "</p>";
+    }
+    
+    return bHtml;
+}
+
+function bubbleShow(textForBubble)
+{
+    thePopup.ShowBubblePopup({      'openingDelay':tweenTime*0.8,
+                                    'closingSpeed':100,
+                                    'distance':'40px',
+                                    'innerHtml':textForBubble,
+                                    'innerHtmlStyle':   {
+                                                            'max-width':'300px',
+                                                            'max-height':'400px',
+                                                            'overflow-y':'scroll',
+                                                        },
+                                    'themeName':bubbleTheme,
+                                    'themePath':'jquerybubblepopup-theme'
+            });
 }
 
 function drawSceneIntoOtherBuffer() {
@@ -1531,6 +1583,8 @@ var connectionFromByPlace = {};
 var connectionToByPlace = {};
 
 var globalPlaceDict = {};
+var globalFriendDict = {};
+var friendsQueried = 0;
 
 //me stuff
 var meObject = null;
@@ -1589,6 +1643,10 @@ function connectionObj(category,fromPlace,toPlace) {
 }
 //short constructor, most of the work is done over here
 connectionObj.prototype.addFriend = function(friend) {
+    if(!friend)
+    {
+        throw "invalid friend on addfriend";
+    }
     this.friendsInConnection.push(friend);
 }
 
@@ -1825,6 +1883,7 @@ placeObj.prototype.easyLocationDeetsCb = function(response) {
         if(currentDisplayCategory == 'hometown' && this == myHometown)
         {
             tweenToGps(this.ourGps.latitude,this.ourGps.longitude);
+            bubbleShow("Your hometown - " + this.name);
         }
 
         return;
@@ -1882,6 +1941,8 @@ placeObj.prototype.findGps = function () {
 }
 
 placeObj.prototype.lastDitchYql = function () {
+    //TODO undo this:
+    return;
     try {
         if(this.type == 'workplace')
         {
@@ -2049,7 +2110,7 @@ function handleFriendsBack(response) {
 
     //RATE LIMIT: fix not only first 3 friends
     //for(var i = 0; i < friendList.length; i++)
-    for(var i =0; i < 300; i++)
+    for(var i =0; i < 350; i++)
     {
         var friend = friendList[i];
 
@@ -2067,72 +2128,116 @@ function handleFriendBack(response){
 
     //if auth failed for some reason... like mid-session
     //im sure theres a better way to do this
-    if(!response.name)
+    if(!response.name || response.error)
     {
         return;
     }
-    //BIG TODO: check for earlier existence!!!
+    
+    //store this friend object
+    friendsQueried += 1;
+    //make the image link
+    response.imageLink = "https:\/\/graph.facebook.com\/" + response.id
+                            + "\/picture\/?access_token=" + fbLoginResponse.authResponse.accessToken;
+    //ok this is really tricky, but im going to add this img to the
+    //document so it loads and then caches so it doesnt suck when the bubble pops open
 
+    $j('body').append('<img src="' + response.imageLink + '" style="display:none"/>');
+
+    globalFriendDict[response.id] = response;
+    
     //here we start making that stuff 
     if(response.location)
     {
-        handleFriendCurrent(response.location);
+        handleFriendCurrent(response.location,response);
     }
     if(response.hometown)
     {
-        handleFriendHometown(response.hometown);
+        handleFriendHometown(response.hometown,response);
     }
     if(response.work && response.work[0])
     {
         for(var i = 0; i < response.work.length; i++)
         {
-            handleFriendWorkplace(response.work[i]);
+            handleFriendWorkplace(response.work[i],response);
         }
     }
     if(response.education && response.education[0])
     {
         for(var j = 0; j < response.education.length; j++)
         {
-            handleFriendEducation(response.education[j]);
+            handleFriendEducation(response.education[j],response);
         }
     }
 }
 
-function handleFriendCurrent(currentJson) {
+function getExistingOrMakeNew(connectionType,fromPlace,toPlace) {
+    //gah this is hard. basically, either get the existing connection thats there
+    //or make a new one and return it
+
+    //get all the connections that have this to place
+
+    //first check if they exist, if not, make and return
+    if(!connectionToByPlace[toPlace.id])
+    {
+        return new connectionObj(connectionType,fromPlace,toPlace);
+    }
+    //ok so they exist, we need to loop through them
+    var theList = connectionToByPlace[toPlace.id];
+    for(var i = 0; i < theList.length; i++)
+    {
+        var theC = theList[i];
+        //already checked to, just need type and from
+        if(theC.category == connectionType && theC.fromPlace == fromPlace)
+        {
+            return theC;
+        }
+    }
+    //not there, so make a new one 
+    return new connectionObj(connectionType,fromPlace,toPlace);
+
+}
+
+function handleFriendCurrent(currentJson,friend) {
     //ok this is kinda like the others. basically, get or make the location
     //and make the connection
     var theirCurrent = getOrMake(currentJson,'current');
     //make the connection for this between the current and the users current
-    var theConnection = new connectionObj('current',myCurrent,theirCurrent);
+    var theConnection = getExistingOrMakeNew('current',myCurrent,theirCurrent);
+    theConnection.addFriend(friend);
+
     theConnection.buildIfReady();
     //todo: add friends on this connection and all that jazz
 }
 
-function handleFriendHometown(hometownJson) {
+function handleFriendHometown(hometownJson,friend) {
     var theirHometown = getOrMake(hometownJson,'hometown');
-    var theConnection = new connectionObj('hometown',myHometown,theirHometown);
+    var theConnection = getExistingOrMakeNew('hometown',myHometown,theirHometown);
+    theConnection.addFriend(friend);
+
     theConnection.buildIfReady();
     //todo friends as wlel
 }
 
-function handleFriendWorkplace(workplaceJson) {
+function handleFriendWorkplace(workplaceJson,friend) {
     var theirWorkplace = getOrMake(workplaceJson,'workplace');
 
     //loop through all of my workplaces, adding new connections
     for(var i = 0; i < myWorkplaces.length; i++)
     {
-        var theC = new connectionObj('workplace',myWorkplaces[i],theirWorkplace);
+        var theC = getExistingOrMakeNew('workplace',myWorkplaces[i],theirWorkplace);
+        theC.addFriend(friend);
         theC.buildIfReady();
     }
 }
 
-function handleFriendEducation(educationJson) {
+function handleFriendEducation(educationJson,friend) {
     var theirEducationPlace = getOrMake(educationJson,'education');
 
     //loop through all of my educations
     for(var i = 0; i < myEducations.length; i++)
     {
-        var theC = new connectionObj('education',myEducations[i],theirEducationPlace);
+        var theC = getExistingOrMakeNew('education',myEducations[i],theirEducationPlace);
+        theC.addFriend(friend);
         theC.buildIfReady();
     }
 }
