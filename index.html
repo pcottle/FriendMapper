@@ -5,11 +5,13 @@
 <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
 
 <link href="style.css" rel="stylesheet" type="text/css"/>
+<link href="jquery.bubblepopup.v2.3.1.css" rel="stylesheet" type="text/css"/>
 
 <script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
 <script type="text/javascript" src="webgl-utils.js"></script>
 <script type="text/javascript" src="Tween.js"></script>
 <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+<script type="text/javascript" src="jquery.bubblepopup.v2.3.1.min.js"></script>
 
 <script id="white-vs" type="x-shader/x-vertex">
 attribute vec3 aVertexPosition;
@@ -142,7 +144,8 @@ var categoryToToColor = {   'hometown':white,
                             'workplace':white};
 
 //globals
-var shouldCircuit = true;
+var shouldCircuit = false;
+var thePopup = null;
 
 var arcUnderMouse = null;
 
@@ -890,12 +893,24 @@ function handleMouseDown(event) {
 }
 
 function fmButtonClick() {
+    //if we are already clicked
+
     //get the id
     var myCategory = $j(this).attr('id');
     if(myCategory)
     {
         currentDisplayCategory = myCategory;
     }
+
+    //if we are already pressed
+    if($j(this).hasClass('depressed'))
+    {
+        //hide our arcs and peace
+        retractArcsOfList(categoryToArcList[myCategory]);
+        $j(this).removeClass('depressed');
+        return;
+    }
+        
 
     var otherButtons = $j('.fmButton:not(#' + myCategory + ')');
     var myButton = $j(this);
@@ -950,6 +965,13 @@ function handleMouseMove(event) {
         lastMouseY = event.clientY;
         return;
     }
+    //this here only executes when we are clicking and dragging mouse
+
+    if(thePopup.IsBubblePopupOpen())
+    {
+        thePopup.HideBubblePopup();
+    }
+
     var newX = event.clientX;
     var newY = event.clientY;
 
@@ -1130,6 +1152,13 @@ function arcClick(anArc)
     {
         tweenToGps(anArc.gpsFrom.latitude,anArc.gpsFrom.longitude);
         anArc.retractArc();
+        var showString = "This location at " + anArc.gpsFrom.latitude + " and " + anArc.gpsFrom.longitude;
+        thePopup.ShowBubblePopup({      'openingDelay':tweenTime*0.8,
+                                        'closingSpeed':100,
+                                        'distance':'40px',
+                                        'innerHtml':showString,
+                                        'innerHtmlStyle':{'max-width':'300px'},
+                });
     }
 }
 
@@ -1359,6 +1388,20 @@ function tweenDone() {
 
 function tweenToGps(lat,long) {
     var rotCorrespondingToGps = convertGpsToRotVariables(lat,long);
+
+    //we need to avoid the 360 spin thing
+    var ySpin = rotCorrespondingToGps.yRotate;
+    var ySpinDistance = ySpin - globalYrotate;
+
+    if(ySpinDistance > 180)
+    {
+        rotCorrespondingToGps.yRotate -= 360;
+    }
+    else if (ySpinDistance < -180)
+    {
+        globalYrotate -= 360;
+    }
+
     //refresh our current rotvaribales
     rotVariablesForTween = {'x':globalXrotate,'y':globalYrotate};
 
@@ -1424,6 +1467,10 @@ function doEarthFlyin() {
 function scaleTweenComplete()
 {
     rubberBandBall();
+    if(!shouldCircuit)
+    {
+        setTimeout('initFacebook()',1500);
+    }
 }
 
 function scaleTweenUpdate() {
@@ -1448,6 +1495,15 @@ $j(document).ready(function(){
 
     //buttons also
     $j('.fmButton').click(fmButtonClick);
+
+    //make popup for that little pixel
+    $j('.popupAnchor').CreateBubblePopup({
+            innerHtml:'hi',
+            innerHtmlStyle:{'text-align':'center'},
+            themeName:'all-azure',
+            themePath:'jquerybubblepopup-theme'
+        });
+   thePopup = $j('.popupAnchor'); 
 
 
 });
@@ -1765,6 +1821,12 @@ placeObj.prototype.easyLocationDeetsCb = function(response) {
         //go refresh these places
         this.refreshConnectionsWithMyPlace();
 
+        //if we are displaying the hometown and this is our hometown, tween to it
+        if(currentDisplayCategory == 'hometown' && this == myHometown)
+        {
+            tweenToGps(this.ourGps.latitude,this.ourGps.longitude);
+        }
+
         return;
     }
     //uh oh, the location deets didnt have a gps, this is weird....
@@ -1933,7 +1995,7 @@ window.fbAsyncInit = function() {
     });
 
     // Additional initialization code here
-    initFacebook();
+    //initFacebook();
 
   };
 
@@ -1986,8 +2048,8 @@ function handleFriendsBack(response) {
     var friendList = response.friends.data;
 
     //RATE LIMIT: fix not only first 3 friends
-    for(var i = 0; i < friendList.length; i++)
-    //for(var i =0; i < 300; i++)
+    //for(var i = 0; i < friendList.length; i++)
+    for(var i =0; i < 300; i++)
     {
         var friend = friendList[i];
 
@@ -2284,6 +2346,8 @@ function initFacebook(){
         {
             //we are good to go, store this and go!
             fbLoginResponse = response;
+            //get rid of the rubber band balls
+            retractArcsOfList(masterArcList);
             launchFbAvalanche();
         }
         else if (response.status == 'not_authorized')
@@ -2309,6 +2373,8 @@ function initFacebook(){
     <div id="education" class="fmButton buttonGradient popped"> E </div>
     <div id="workplace" class="fmButton buttonGradient popped"> W </div>
 </div>
+<div class="popupAnchor"></div>
+
 </body>
 
 </html>

@@ -200,3 +200,12 @@ h1 {
    -o-transition: all 700ms cubic-bezier(0.260, 0.860, 0.440, 0.985);
    transition: all 700ms cubic-bezier(0.260, 0.860, 0.440, 0.985);
 }
+
+.popupAnchor {
+    width:1px;
+    height:1px;
+    position:absolute;
+    top:50%;
+    left:50%;
+    opacity:0;
+}
