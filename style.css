@@ -68,7 +68,7 @@ background-image: -webkit-gradient(
 	font-style: normal;
 }
 
-h1, h2, h3, h4,a {
+h1, h2, h3, h4 {
 	margin: 0 0 20px 0;
 	
 	color: #eee;
@@ -88,6 +88,7 @@ h3 { font-size: 56px;	}
 h4 { font-size: 36px;	}
 p { font-size: 10px; }
 */
+p { font-size: 14px; }
 
 h1.inverted,
 h2.inverted,
@@ -195,6 +196,21 @@ h1 {
     background-clip: padding-box;
 }
 
+.profileImage {
+  -webkit-box-reflect: below -5px -webkit-gradient(linear,left top, left bottom, from(transparent), to(rgba(255,255,255,0.1))); 
+  -moz-border-radius:2px;
+  -webkit-border-radius:2px;
+  border-radius:2px;
+  position:relative;
+  left:5px;
+}
+
+.profileImage2 {
+    border-radius:2px;
+    margin:5px;
+}
+
+
 .smooth,.anArrow {
    -webkit-transition: all 700ms cubic-bezier(0.260, 0.860, 0.440, 0.985);
   -moz-transition: all 700ms cubic-bezier(0.260, 0.860, 0.440, 0.985);
@@ -210,4 +226,35 @@ h1 {
     top:50%;
     left:50%;
     opacity:0;
+}
+
+.bubbleDiv {
+    font-size:14px;
+}
+
+.friendQueryHolder {
+    width:100%;
+    position:absolute;
+    top:10px;
+    height:300px;
+    text-align:left;
+    padding:0px;
+}
+
+.friendQueryCounter {
+    display:inline-block;
+    border: 2px solid white;
+    width:160px;
+    border-radius:5px;
+    background:#222;
+    padding:10px;
+    margin-left:10px;
+}
+
+#friendQueryCounterPics {
+    width:140px;
+    max-height:200px;
+    overflow:auto;
+    padding:5px;
+    -webkit-box-shadow: inset 0px 0px 10px #000000;
 }

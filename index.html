@@ -125,9 +125,9 @@ var arcBaseRadius = 2;
 var arcBaseThickness = 0.04;
 var arcBaseHeight = 0.1;
 
-var arcAlpha = 0.7;
+var arcAlpha = 0.8;
 
-var bubbleTheme = 'all-azure';
+var bubbleTheme = 'all-blue';
 var white = [1,1,1,arcAlpha];
 var blue = [0,0,1,arcAlpha];
 var green = [0,1,0,arcAlpha];
@@ -596,10 +596,53 @@ function initGL(canvas) {
     }
 }
 
-function onMouseWheel(event) {
-    event.preventDefault();
+function determineIfInPopup(eventFragment) {
+    if(!eventFragment)
+    {
+        return false;
+    }
+    //console.log("This level class " + eventFragment.className);
+    if(/bubble/.test(eventFragment.className))
+    {
+        return true;
+    }
+    //dig deeper
+    return determineIfInPopup(eventFragment.parentNode);
+}
 
-    zoomAmount += event.originalEvent.wheelDeltaY * 0.003;
+function onMouseWheel(event) {
+
+    //first, check if this was a scroll inside a popup thing
+    if(event.originalEvent && event.originalEvent.srcElement)
+    {
+        if(determineIfInPopup(event.originalEvent.srcElement))
+        {
+            //console.log("was in bubble div");
+            //dont do stupid zoom stuff
+            return;
+        }
+        else
+        {
+            //console.log("not in bubble div");
+        }
+    }
+
+    var toZoom = 0;
+    if(event.originalEvent.wheelDeltaY)
+    {
+        toZoom = event.originalEvent.wheelDeltaY * 0.003;
+    }
+    else
+    {
+        //friggin firefox...
+        toZoom = -1 * event.originalEvent.detail * 0.06;
+    }
+
+    zoomAmount += toZoom;
+    if(zoomAmount > -2.76)
+    {
+        zoomAmount = -2.76;
+    }
 }
 
 function resizeWindow()
@@ -894,7 +937,6 @@ function handleMouseDown(event) {
 }
 
 function fmButtonClick() {
-    //if we are already clicked
 
     //get the id
     var myCategory = $j(this).attr('id');
@@ -911,7 +953,11 @@ function fmButtonClick() {
         $j(this).removeClass('depressed');
         return;
     }
-        
+
+    if(thePopup.IsBubblePopupOpen())
+    {
+        thePopup.HideBubblePopup();
+    }
 
     var otherButtons = $j('.fmButton:not(#' + myCategory + ')');
     var myButton = $j(this);
@@ -933,7 +979,24 @@ function fmButtonClick() {
             retractArcsOfList(categoryToArcList[theCat]);
         }
     }
-    //done?
+
+    //go ahead and tween my hometown or whatever if its open
+    if(myCategory == 'hometown')
+    {
+        tweenToHometown();
+    }
+    if(myCategory == 'current')
+    {
+        tweenToCurrent();
+    }
+    if(myCategory == 'workplace')
+    {
+        tweenToWork();
+    }
+    if(myCategory == 'education')
+    {
+        tweenToEducation();
+    }
 
 }
 
@@ -1143,8 +1206,6 @@ function arcClick(anArc)
 {
     if(anArc.myConnection)
     {
-        console.log("this arcs connection:");
-        console.log(anArc.myConnection);
         //going there
         fbClickOnArc(anArc);
     }
@@ -1169,6 +1230,7 @@ function fbClickOnArc(anArc) {
 
 function buildHtmlForBubble(aConnection) {
     var bHtml = "";
+    bHtml += '<div style="max-height:400px;padding:10px;overflow:auto;" class="bubbleDiv">';
     bHtml += "<b>" + aConnection.toPlace.name + "</b>";
     bHtml += "<p>" + aConnection.category[0] + aConnection.category.slice(1) + " connection</p>";
 
@@ -1185,16 +1247,23 @@ function buildHtmlForBubble(aConnection) {
     {
         bHtml += "<li>";
         bHtml += fList[i].name;
-        bHtml += '<img style="display:inline-block" src="' + fList[i].imageLink + '"/>';
+        bHtml += '<img class="profileImage" style="display:inline-block" src="' + fList[i].imageLink + '"/>';
         bHtml += "</li>";
     }
     bHtml += "</ul>";
 
-    if(aConnection.toPlace.locationJson.description)
+    if((aConnection.category == 'hometown' || aConnection.category == 'current') &&
+        aConnection.toPlace.locationJson.description)
     {
         bHtml += "<p>" + aConnection.toPlace.locationJson.description + "</p>";
     }
+    if((aConnection.category == 'workplace' || aConnection.category == 'education')
+        && aConnection.toPlace.ourJson.description)
+    {
+        bHtml += "<p>" + aConnection.toPlace.ourJson.description;
+    }
     
+    bHtml += "</div>";
     return bHtml;
 }
 
@@ -1205,9 +1274,8 @@ function bubbleShow(textForBubble)
                                     'distance':'40px',
                                     'innerHtml':textForBubble,
                                     'innerHtmlStyle':   {
-                                                            'max-width':'300px',
+                                                            'max-width':'500px',
                                                             'max-height':'400px',
-                                                            'overflow-y':'scroll',
                                                         },
                                     'themeName':bubbleTheme,
                                     'themePath':'jquerybubblepopup-theme'
@@ -1544,6 +1612,8 @@ $j(document).ready(function(){
 
     //var container = document.getElementById('earth-canvas');
     $j(document).bind('mousewheel',onMouseWheel);
+    $j(document).bind('DOMMouseScroll',onMouseWheel);
+    
 
     //buttons also
     $j('.fmButton').click(fmButtonClick);
@@ -1552,7 +1622,7 @@ $j(document).ready(function(){
     $j('.popupAnchor').CreateBubblePopup({
             innerHtml:'hi',
             innerHtmlStyle:{'text-align':'center'},
-            themeName:'all-azure',
+            themeName:bubbleTheme,
             themePath:'jquerybubblepopup-theme'
         });
    thePopup = $j('.popupAnchor'); 
@@ -1882,8 +1952,7 @@ placeObj.prototype.easyLocationDeetsCb = function(response) {
         //if we are displaying the hometown and this is our hometown, tween to it
         if(currentDisplayCategory == 'hometown' && this == myHometown)
         {
-            tweenToGps(this.ourGps.latitude,this.ourGps.longitude);
-            bubbleShow("Your hometown - " + this.name);
+            tweenToHometown();
         }
 
         return;
@@ -1892,7 +1961,27 @@ placeObj.prototype.easyLocationDeetsCb = function(response) {
     console.log("Weird, location deets didnt have a gps...");
     console.log("this is the response from fb");
     console.log(response);
-    throw "no location deets on cb";
+    console.log("Stupid " + response.name + " not having GPS coords");
+}
+
+function tweenToHometown() {
+    bubbleShow("Your hometown - " + myHometown.name);
+    tweenToGps(myHometown.ourGps.latitude,myHometown.ourGps.longitude);
+}
+
+function tweenToCurrent() {
+    bubbleShow("Your current location - " + myCurrent.name);
+    tweenToGps(myCurrent.ourGps.latitude,myCurrent.ourGps.longitude);
+}
+
+function tweenToWork() {
+    bubbleShow("Your most recent employer - " + myWorkplaces[0].ourJson.employer.name);
+    tweenToGps(myWorkplaces[0].ourGps.latitude,myWorkplaces[0].ourGps.longitude);
+}
+
+function tweenToEducation() {
+    bubbleShow("Your most recent education - " + myEducations[myEducations.length-1].ourJson.school.name);
+    tweenToGps(myEducations[myEducations.length-1].ourGps.latitude,myEducations[myEducations.length-1].ourGps.longitude);
 }
 
 function makeEasyLocationDeetsCallback(referenceToObject) {
@@ -1981,6 +2070,7 @@ function makeFbSearchCallback(referenceToObject) {
 
 placeObj.prototype.makeFbGraphSearchForGps = function(name) {
     var baseQuery = "/search?q=" + escape(name);
+    baseQuery += "&type=place";
     var ourCallbackClosure = makeFbSearchCallback(this);
 
     FB.api(baseQuery, function(response) { ourCallbackClosure(response); } );
@@ -2109,17 +2199,76 @@ function handleFriendsBack(response) {
     var friendList = response.friends.data;
 
     //RATE LIMIT: fix not only first 3 friends
-    //for(var i = 0; i < friendList.length; i++)
-    for(var i =0; i < 350; i++)
+    
+    //DO BATCH REQUESTS!!
+    while(friendList.length > 0)
     {
-        var friend = friendList[i];
+        var aListToBatch = friendList.splice(0,50);
+        queryBatchFriendList(aListToBatch);
+    }
 
-        var fId = friend.id;
-        var fName = friend.name;
-
+/*
         //fire off a request for this friend, and a function to handle it
         FB.api('/' + fId + '?fields=id,about,name,hometown,location,work,education',function(response){ handleFriendBack(response); });
     }
+    */
+}
+
+function queryBatchFriendList(friendList) {
+    var theBatch = [];
+    var theFields = '?fields=id,about,name,hometown,location,education';
+
+    for(var i = 0; i < friendList.length; i++)
+    {
+        var theObj = {'method':'GET','relative_url': friendList[i].id + theFields};
+        theBatch.push(theObj);
+    }
+    //now one giant query
+
+    FB.api('/','POST',{'batch':theBatch},function(response) {handleFriendBatchBack(response);});
+} 
+
+function handleFriendBatchBack(response) {
+
+    for(var i = 0; i < response.length; i++)
+    {
+        var theData = response[i];
+        if(theData.code == 200)
+        {
+            //i think we need to make this a json object
+            var toHandle = JSON.parse(theData.body);
+            handleFriendBack(toHandle);
+        }
+    }
+}
+
+function updateFriendQueryBox(imageLink,friendName) {
+    $j('#friendQueryCounterBox').fadeIn();
+    //some box that we animate to be flashy when another friend comes back
+
+    //set the inner html of that thing
+    $j('#friendQueryCounterNum').html(String(friendsQueried));
+
+    var theId = 'friendNum' + String(friendsQueried);
+    if(imageLink)
+    {
+        var imgString = '<img alt="' + friendName + '" id="' + theId + '" class="profileImage2" src="' + imageLink + '"/>';
+
+        $j('#friendQueryCounterPics').append(imgString);
+    }
+    /*
+    $j('#'+ theId).CreateBubblePopup({
+            innerHtml:friendName,
+            innerHtmlStyle:{'text-align':'center'},
+            themeName:'all-black',
+            themePath:'jquerybubblepopup-theme'
+        });
+    */
+    setTimeout("fadeBox()",2600);
+}
+
+function fadeBox() {
+    $j('#friendQueryCounterBox').fadeOut();
 }
 
 function handleFriendBack(response){
@@ -2132,16 +2281,17 @@ function handleFriendBack(response){
     {
         return;
     }
-    
-    //store this friend object
-    friendsQueried += 1;
+
     //make the image link
     response.imageLink = "https:\/\/graph.facebook.com\/" + response.id
-                            + "\/picture\/?access_token=" + fbLoginResponse.authResponse.accessToken;
-    //ok this is really tricky, but im going to add this img to the
-    //document so it loads and then caches so it doesnt suck when the bubble pops open
+                            + "\/picture\/";
 
-    $j('body').append('<img src="' + response.imageLink + '" style="display:none"/>');
+   
+    friendsQueried += 1;
+    updateFriendQueryBox(response.imageLink,response.name);
+    
+
+    //$j('body').append('<img src="' + response.imageLink + '" style="display:none"/>');
 
     globalFriendDict[response.id] = response;
     
@@ -2479,6 +2629,15 @@ function initFacebook(){
     <div id="workplace" class="fmButton buttonGradient popped"> W </div>
 </div>
 <div class="popupAnchor"></div>
+<div class="friendQueryHolder bubbleToStop">
+    <div id="friendQueryCounterBox" style="display:none;opacity:0" class="friendQueryCounter">
+        <p>Friends Queried:</p>
+        <p id="friendQueryCounterNum">0</p>
+        <div id="friendQueryCounterPics">
+        </div>
+    
+    </div>
+</div>
 
 </body>
 
