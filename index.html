@@ -3,6 +3,12 @@
 <head>
 <title> Friend Mapper!</title>
 <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+<meta property="og:title" content="Friend Mapper"/>
+<meta property="og:type" content="website"/>
+<meta property="og:url" content="http://petercottle.com/friendMapper2/index.html"/>
+<meta property="og:image" content="http://petercottle.com/friendMapper2/friendMapperIcon.PNG"/>
+<meta property="og:site_name" content="FriendMapper"/>
+<meta property="og:description" content="Map your friends in 3D with WebGl and the Facebook Graph API! Coded by Peter Cottle"/>
 
 <link href="jquery.bubblepopup.v2.3.1.css" rel="stylesheet" type="text/css"/>
 <link href="style.css" rel="stylesheet" type="text/css"/>
@@ -1601,10 +1607,7 @@ $j(document).ready(function(){
     TWEEN.start();
     webGLStart();
 
-    if(shouldCircuit)
-    {
-        //rubberBandBall();
-    }
+    theBatchSender = new batchSenderObj();
 
     $j(window).resize(function(){resizeWindow();});
     //initial resize
@@ -1656,6 +1659,8 @@ var globalPlaceDict = {};
 var globalFriendDict = {};
 var friendsQueried = 0;
 
+var theBatchSender = null;
+
 //me stuff
 var meObject = null;
 var myHometown = null;
@@ -1672,6 +1677,100 @@ categoryToList = {'hometown':hometownConnections,'workplace':workplaceConnection
 var fbLoginResponse = null;
 
 /******************************CLASSES**********************/
+
+function batchSenderObj() {
+    this.currentBatchNum = 0;
+    this.batchReferences = [];
+    this.currentBatch = [];
+    this.myTimeout = null;
+}
+
+batchSenderObj.prototype.addSearchQuery = function(objFunctionCallback,searchString) {
+    //ok add this thing to our current batch
+    var theSearch = {'cb':objFunctionCallback,'searchString':searchString};
+    this.currentBatch.push(theSearch);
+
+    this.sendOrResetTimer();
+}
+
+batchSenderObj.prototype.sendOrResetTimer = function() {
+    if(this.currentBatch.length < 50)
+    {
+        this.resetTimer();
+        return;
+    }
+    //we should actually go send!
+    
+    //to do this, just clear the timer we have and send
+    if(this.myTimeout)
+    {
+        clearTimeout(this.myTimeout);
+    }
+    this.sendBatch();
+}
+
+batchSenderObj.prototype.resetTimer = function() {
+    //just clear our timeout if we have it and make a new one to send
+    if(this.myTimeout)
+    {
+        clearTimeout(this.myTimeout);
+    }
+    this.myTimeout = setTimeout('theBatchSender.sendBatch()',10*1000);
+}
+
+function makeBatchCallback(referenceToBatch,batchNum) {
+    var toReturn = function(response) { referenceToBatch.processBatchBack(batchNum,response); }
+    return toReturn;
+}
+
+batchSenderObj.prototype.sendBatch= function() {
+    this.batchReferences.push(this.currentBatch); 
+    var batchNum = this.currentBatchNum;
+
+    //make a new empty batch for future requests
+    this.currentBatch = [];
+    this.currentBatchNum += 1;
+
+    var listOfReq = this.batchReferences[batchNum];
+
+    var batchToSend = [];
+    for(var i = 0; i < listOfReq.length; i++)
+    {
+        var theObj = {'method':'GET','relative_url':listOfReq[i].searchString};
+        batchToSend.push(theObj);
+    }
+
+    var ourClosure = makeBatchCallback(this,batchNum);
+    FB.api('/','POST',{'batch':batchToSend},function(response) { ourClosure(response); });
+}
+
+batchSenderObj.prototype.processBatchBack = function(batchNum,response) {
+    /*console.log("Batch search back!!");
+    console.log("number" + batchNum);
+    console.log(" and data");
+    console.log(response);*/
+
+    var ourBatch = this.batchReferences[batchNum];
+
+    for(var i = 0; i < response.length; i++)
+    {
+        var theData = response[i];
+        if(theData.code == 200)
+        {
+            var toHandle = JSON.parse(theData.body);
+            ourBatch[i].cb(toHandle);
+        }
+        else
+        {
+            console.log("error on facebook graph");
+            console.log(theData);
+        }
+    }
+    //should be done
+}
+
+
+
 
 function connectionObj(category,fromPlace,toPlace) {
     this.myArc = null;
@@ -1981,7 +2080,10 @@ function tweenToWork() {
 
 function tweenToEducation() {
     bubbleShow("Your most recent education - " + myEducations[myEducations.length-1].ourJson.school.name);
-    tweenToGps(myEducations[myEducations.length-1].ourGps.latitude,myEducations[myEducations.length-1].ourGps.longitude);
+    if(myEducations[myEducations.length-1].ourGps.latitude)
+    {
+        tweenToGps(myEducations[myEducations.length-1].ourGps.latitude,myEducations[myEducations.length-1].ourGps.longitude);
+    }
 }
 
 function makeEasyLocationDeetsCallback(referenceToObject) {
@@ -2000,7 +2102,8 @@ placeObj.prototype.findGps = function () {
     {
         //we are guaranteed to have a locaiton id, so go query that
         var ourCallbackClosure = makeEasyLocationDeetsCallback(this);
-        FB.api('/' + this.locationJson.id, function(response) { ourCallbackClosure(response); });
+        //FB.api('/' + this.locationJson.id, function(response) { ourCallbackClosure(response); });
+        theBatchSender.addSearchQuery(ourCallbackClosure,'/' + this.locationJson.id);
         return;
     }
 
@@ -2031,7 +2134,6 @@ placeObj.prototype.findGps = function () {
 
 placeObj.prototype.lastDitchYql = function () {
     //TODO undo this:
-    return;
     try {
         if(this.type == 'workplace')
         {
@@ -2073,7 +2175,8 @@ placeObj.prototype.makeFbGraphSearchForGps = function(name) {
     baseQuery += "&type=place";
     var ourCallbackClosure = makeFbSearchCallback(this);
 
-    FB.api(baseQuery, function(response) { ourCallbackClosure(response); } );
+    //FB.api(baseQuery, function(response) { ourCallbackClosure(response); } );
+    theBatchSender.addSearchQuery(ourCallbackClosure,baseQuery);
 
 }
 
@@ -2158,9 +2261,6 @@ window.fbAsyncInit = function() {
      d.getElementsByTagName('head')[0].appendChild(js);
    }(document));
 
-function fbTest() {
-    FB.api('/me', function(response) {console.log(response);alert("your name is " + response.name); });
-}
 
 function fbLogin() {
     FB.login(function(response)
@@ -2198,7 +2298,6 @@ function handleFriendsBack(response) {
     //loop through these friends
     var friendList = response.friends.data;
 
-    //RATE LIMIT: fix not only first 3 friends
     
     //DO BATCH REQUESTS!!
     while(friendList.length > 0)
@@ -2207,16 +2306,11 @@ function handleFriendsBack(response) {
         queryBatchFriendList(aListToBatch);
     }
 
-/*
-        //fire off a request for this friend, and a function to handle it
-        FB.api('/' + fId + '?fields=id,about,name,hometown,location,work,education',function(response){ handleFriendBack(response); });
-    }
-    */
 }
 
 function queryBatchFriendList(friendList) {
     var theBatch = [];
-    var theFields = '?fields=id,about,name,hometown,location,education';
+    var theFields = '?fields=id,about,work,name,hometown,location,education';
 
     for(var i = 0; i < friendList.length; i++)
     {
@@ -2591,7 +2685,7 @@ function handleMeBack(response){
 
 function askForAuth() {
     //add that button thing
-    $j('body').append('<div id="authBox"style="position:absolute;top:0px;left:0px;width:200px;height:200px;background:white;"><font style="color:black"><a style="color:black;cursor:pointer"onclick="javascript:fbLogin()">Please authenticate the app!</a></font></div>');
+    $j('body').append('<div id="authBox"style="position:absolute;top:0px;left:0px;width:200px;height:200px;background:white;"><font style="color:black"><a style="color:black;cursor:pointer"onclick="javascript:fbLogin()">Please authenticate the app!</a></font><div class="fb-login-button" onclick="javascript:fbLogin()"></div></div>');
 }
 
 function initFacebook(){
@@ -2630,7 +2724,7 @@ function initFacebook(){
 </div>
 <div class="popupAnchor"></div>
 <div class="friendQueryHolder bubbleToStop">
-    <div id="friendQueryCounterBox" style="display:none;opacity:0" class="friendQueryCounter">
+    <div id="friendQueryCounterBox" style="opacity:0" class="friendQueryCounter">
         <p>Friends Queried:</p>
         <p id="friendQueryCounterNum">0</p>
         <div id="friendQueryCounterPics">
