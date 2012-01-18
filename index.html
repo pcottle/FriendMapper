@@ -131,7 +131,7 @@ var arcBaseRadius = 2;
 var arcBaseThickness = 0.04;
 var arcBaseHeight = 0.1;
 
-var arcAlpha = 0.8;
+var arcAlpha = 0.75;
 
 var bubbleTheme = 'all-blue';
 var white = [1,1,1,arcAlpha];
@@ -1310,7 +1310,8 @@ function drawSceneEither(forPicking) {
     gl.useProgram(blendShaderProgram);
     setMatrixUniforms();
 
-    for(var i = 0; i < masterArcList.length; i++)
+    //the 1500 is for when it gets crazay
+    for(var i = 0; i < masterArcList.length && i < 1500; i++)
     {
         var theArc = masterArcList[i];
         theArc.animateArc();
@@ -2489,6 +2490,9 @@ function handleFriendEducation(educationJson,friend) {
 
 function launchFbAvalanche() {
 
+    //remove all the arcs there
+    retractArcsOfList(masterArcList);
+
     //short circuit
     if(shouldCircuit)
     {
@@ -2696,7 +2700,6 @@ function initFacebook(){
             //we are good to go, store this and go!
             fbLoginResponse = response;
             //get rid of the rubber band balls
-            retractArcsOfList(masterArcList);
             launchFbAvalanche();
         }
         else if (response.status == 'not_authorized')
