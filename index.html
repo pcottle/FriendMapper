@@ -598,8 +598,8 @@ function initGL(canvas) {
         gl.viewportHeight = canvas.height;
     } catch (e) {
     }
-    if (!gl) {
-        alert("Could not initialise WebGL, sorry :-(");
+    if (!gl || /Firefox/.test(navigator.userAgent)) {
+        window.location = "http://petercottle.com/friendMapper2/browserFail.html";
     }
 }
 
@@ -676,6 +676,12 @@ function resizeWindow()
     mat4.perspective(45,gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, pMatrix);
 
     setMatrixUniforms();
+
+
+     $j('.loadingGif').css('left',String(wWidth/2 - 220*0.5) + 'px');
+    $j('.loadingGif').css('top',String(wHeight / 2 - 19*0.5) + 'px');
+    //fix loading gif
+    
 }
 
 
@@ -990,11 +996,25 @@ function fmButtonClick() {
     //go ahead and tween my hometown or whatever if its open
     if(myCategory == 'hometown')
     {
-        tweenToHometown();
+        if(myHometown)
+        {
+            tweenToHometown();
+        }
+        else
+        {
+            askForHometown();
+        }
     }
     if(myCategory == 'current')
     {
-        tweenToCurrent();
+        if(myCurrent)
+        {
+            tweenToCurrent();
+        }
+        else
+        {
+            askForCurrent();
+        }
     }
     if(myCategory == 'workplace')
     {
@@ -1241,12 +1261,12 @@ function fbClickOnArc(anArc) {
 
 function buildHtmlForBubble(aConnection) {
     var bHtml = "";
-    bHtml += '<div style="max-height:400px;padding:10px;" class="bubbleDiv">';
+    bHtml += '<div style="max-height:300px;padding:10px;" class="bubbleDiv">';
     bHtml += '<p id="closeButton" style="float:right;display:inline-block;position:relative;top:-34px;left:7px;font-size:20px;cursor:pointer;" onclick="bubbleHide();"><b>X</b></p>'; 
-    bHtml += "<b>" + aConnection.toPlace.name + "</b>";
-    bHtml += "<p>" + aConnection.category[0].toUpperCase() + aConnection.category.slice(1) + " Connection</p>";
+    bHtml += "<b>" + aConnection.toPlace.name + '</b><div style="height:5px;"></div>';
 
-    bHtml += '<div style="overflow:auto;max-height:320px;box-shadow:inset 0px 0px 12px #000;padding:15px;">';
+    bHtml += '<div style="overflow:auto;max-height:250px;box-shadow:inset 0px 0px 12px #000;padding:15px;margin-bottom:10px">';
+    bHtml += "<p>" + aConnection.category[0].toUpperCase() + aConnection.category.slice(1) + " Connection</p>";
 
     var catToVerb = {'hometown':'are from here',
                     'current':'live here',
@@ -1284,9 +1304,10 @@ function buildHtmlForBubble(aConnection) {
 
 function bubbleShow(textForBubble)
 {
+    thePopup.HideBubblePopup(10);
     thePopup.ShowBubblePopup({      'openingDelay':tweenTime*0.8,
                                     'closingSpeed':100,
-                                    'distance':'40px',
+                                    'distance':'60px',
                                     'innerHtml':textForBubble,
                                     'innerHtmlStyle':   {
                                                             'max-width':'500px',
@@ -2089,25 +2110,66 @@ placeObj.prototype.easyLocationDeetsCb = function(response) {
 
 function tweenToHometown() {
     bubbleShow("Your hometown - " + myHometown.name);
+    if(!myHometown.ourGps)
+    {
+        topNotify("The Facebook Graph was unable to resolve your hometown GPS - Try again in a bit");
+        return;
+    }
     tweenToGps(myHometown.ourGps.latitude,myHometown.ourGps.longitude);
 }
 
 function tweenToCurrent() {
     bubbleShow("Your current location - " + myCurrent.name);
+    if(!myCurrent.ourGps)
+    {
+        topNotify("The Facebook Graph was unable to resolve your current location GPS - Try again in a bit");
+        return;
+    }
     tweenToGps(myCurrent.ourGps.latitude,myCurrent.ourGps.longitude);
 }
 
 function tweenToWork() {
-    bubbleShow("Your most recent employer - " + myWorkplaces[0].ourJson.employer.name);
-    tweenToGps(myWorkplaces[0].ourGps.latitude,myWorkplaces[0].ourGps.longitude);
+    var workToTween = null;
+
+    for(var i = 0; i < myWorkplaces.length; i++)
+    {
+        if(myWorkplaces[i].ourGps)
+        {
+            workToTween = myWorkplaces[i];
+            break;
+        }
+    }
+
+    if(!workToTween)
+    {
+        topNotify("The Facebook Graph was unable to resolve any of your workplace GPS coordinates - try again in a bit");
+        return;
+    }
+
+    bubbleShow("One of your workplaces - " + workToTween.ourJson.employer.name);
+    tweenToGps(workToTween.ourGps.latitude,workToTween.ourGps.longitude);
 }
 
 function tweenToEducation() {
-    bubbleShow("Your most recent education - " + myEducations[myEducations.length-1].ourJson.school.name);
-    if(myEducations[myEducations.length-1].ourGps.latitude)
+    var educationToTween = null;
+
+    for(var i = myEducations.length - 1; i > 0; i--)
     {
-        tweenToGps(myEducations[myEducations.length-1].ourGps.latitude,myEducations[myEducations.length-1].ourGps.longitude);
+        if(myEducations[i].ourGps)
+        {
+            educationToTween = myEducations[i];
+            break;
+        }
     }
+
+    if(!educationToTween)
+    {
+        topNotify("The Facebook Graph was unable to resolve any of your education location GPS coordinates - try again in a bit");
+        return;
+    }
+
+    bubbleShow("One of your Educations - " + educationToTween.ourJson.school.name);
+    tweenToGps(educationToTween.ourGps.latitude,educationToTween.ourGps.longitude);
 }
 
 function makeEasyLocationDeetsCallback(referenceToObject) {
@@ -2718,12 +2780,23 @@ function handleMeBack(response){
     }
     else
     {
-        //alert("You haven't listed a hometown on Facebook!");
+        if(currentDisplayCategory == 'hometown')
+        {
+            askForHometown();
+        }
     }
     if(response.location)
     {
         setMyCurrent(response.location);
     }
+    else
+    {
+        if(currentDisplayCategory == 'current')
+        {
+            askForCurrent();
+        }
+    }
+
     if(response.work && response.work[0])
     {
         setFirstWorkplace(response.work[0]);
