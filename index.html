@@ -153,6 +153,7 @@ var categoryToToColor = {   'hometown':white,
 //globals
 var shouldCircuit = false;
 var thePopup = null;
+var canvas = null;
 
 var arcUnderMouse = null;
 
@@ -1568,7 +1569,7 @@ function tick() {
 
 
 function webGLStart() {
-    var canvas = document.getElementById("earth-canvas");
+    canvas = document.getElementById("earth-canvas");
     initGL(canvas);
     initShaders();
     initEarthBuffers();
@@ -1891,6 +1892,12 @@ connectionObj.prototype.buildIfReady = function () {
     if(this.category == currentDisplayCategory)
     {
         this.myArc.expandArc();
+        //hide loading gif if this is the first arc back
+        if(isLoading)
+        {
+            //not loading anymore!
+            stopLoading();
+        }
     }
 
 
@@ -2481,7 +2488,7 @@ function handleFriendCurrent(currentJson,friend) {
     theConnection.addFriend(friend);
 
     theConnection.buildIfReady();
-    //todo: add friends on this connection and all that jazz
+
 }
 
 function handleFriendHometown(hometownJson,friend) {
@@ -2490,7 +2497,6 @@ function handleFriendHometown(hometownJson,friend) {
     theConnection.addFriend(friend);
 
     theConnection.buildIfReady();
-    //todo friends as wlel
 }
 
 function handleFriendWorkplace(workplaceJson,friend) {
@@ -2534,10 +2540,30 @@ function launchFbAvalanche() {
     console.log(fbLoginResponse);
     console.log("***********You're logged in!***************");
 
+    //start the "loading"
+    startLoading();
+
+
     //do a query for your friends
     FB.api('/me?fields=friends',handleFriendsBack);
     //get yourself too
     FB.api('/me',handleMeBack);
+}
+
+function startLoading() {
+    isLoading = true;
+
+    var wHeight = $j(window).height();
+    var wWidth = $j(window).width();
+    $j('.loadingGif').css('left',String(wWidth/2 - 220*0.5) + 'px');
+    $j('.loadingGif').css('top',String(wHeight / 2 - 19*0.5) + 'px');
+    $j('.loadingGif').fadeIn();
+
+}
+
+function stopLoading() {
+    isLoading = false;
+    $j('.loadingGif').fadeOut();
 }
 
 function getOrMake(placeJson,placeType) {
@@ -2756,13 +2782,16 @@ function initFacebook(){
 
     <canvas id="earth-canvas" style="border: none;" width="500px" height="500px"></canvas>
 
-<div class="fmButtonHolder bubbleToStop smooth" style="position:relative;bottom:-100px">
+<div class="fmButtonHolder bubbleToStop smooth" style="position:relative;bottom:-300px">
     <div id="hometown" class="fmButton buttonGradient depressed"> Hometown </div>
     <div id="current" class="fmButton buttonGradient popped"> Current </div>
     <div id="education" class="fmButton buttonGradient popped"> Education </div>
     <div id="workplace" class="fmButton buttonGradient popped"> Workplace </div>
 </div>
-<div class="popupAnchor"></div>
+<div class="popupAnchor">
+</div>
+<img src="loading.gif"class="loadingGif"/>
+
 <div class="friendQueryHolder bubbleToStop">
     <div id="friendQueryCounterBox" class="friendQueryCounter">
         <p>Friends Queried:</p>
