@@ -1172,6 +1172,10 @@ function mouseClickPick(event) {
     {
         arcClick(theArc);
     }
+    else
+    {
+        console.log("No arc under mouse click :-/ ");
+    }
 }
 
 function getArcAtMousePos(x,y) {
@@ -1236,9 +1240,12 @@ function fbClickOnArc(anArc) {
 
 function buildHtmlForBubble(aConnection) {
     var bHtml = "";
-    bHtml += '<div style="max-height:400px;padding:10px;overflow:auto;" class="bubbleDiv">';
+    bHtml += '<div style="max-height:400px;padding:10px;" class="bubbleDiv">';
+    bHtml += '<p id="closeButton" style="float:right;display:inline-block;position:relative;top:-34px;left:7px;font-size:20px;cursor:pointer;" onclick="bubbleHide();"><b>X</b></p>'; 
     bHtml += "<b>" + aConnection.toPlace.name + "</b>";
-    bHtml += "<p>" + aConnection.category[0] + aConnection.category.slice(1) + " connection</p>";
+    bHtml += "<p>" + aConnection.category[0].toUpperCase() + aConnection.category.slice(1) + " Connection</p>";
+
+    bHtml += '<div style="overflow:auto;max-height:320px;box-shadow:inset 0px 0px 12px #000;padding:15px;">';
 
     var catToVerb = {'hometown':'are from here',
                     'current':'live here',
@@ -1270,6 +1277,7 @@ function buildHtmlForBubble(aConnection) {
     }
     
     bHtml += "</div>";
+    bHtml += "</div>";
     return bHtml;
 }
 
@@ -1286,6 +1294,11 @@ function bubbleShow(textForBubble)
                                     'themeName':bubbleTheme,
                                     'themePath':'jquerybubblepopup-theme'
             });
+}
+
+function bubbleHide()
+{
+    thePopup.HideBubblePopup();
 }
 
 function drawSceneIntoOtherBuffer() {
@@ -1661,6 +1674,9 @@ var globalFriendDict = {};
 var friendsQueried = 0;
 
 var theBatchSender = null;
+
+var boxTimeout = null;
+var isLoading = false;
 
 //me stuff
 var meObject = null;
@@ -2283,6 +2299,8 @@ function fbLogin() {
 
 function removeAuthButton() {
     $j('#authBox').fadeOut();
+    $j('#authBox').css('left','-300px');
+    $j('#authBox').css('top','-300px');
 
 }
 
@@ -2338,6 +2356,16 @@ function handleFriendBatchBack(response) {
 }
 
 function updateFriendQueryBox(imageLink,friendName) {
+    //disabled for now
+    return;
+
+
+
+    if(boxTimeout)
+    {
+        clearTimeout(boxTimeout);
+    }
+
     $j('#friendQueryCounterBox').fadeIn();
     //some box that we animate to be flashy when another friend comes back
 
@@ -2349,8 +2377,10 @@ function updateFriendQueryBox(imageLink,friendName) {
     {
         var imgString = '<img alt="' + friendName + '" id="' + theId + '" class="profileImage2" src="' + imageLink + '"/>';
 
-        $j('#friendQueryCounterPics').append(imgString);
+        //prepend
+        $j('#friendQueryCounterPics').html(imgString + $j('#friendQueryCounterPics').html());
     }
+    //no bubble thing anymore
     /*
     $j('#'+ theId).CreateBubblePopup({
             innerHtml:friendName,
@@ -2359,7 +2389,7 @@ function updateFriendQueryBox(imageLink,friendName) {
             themePath:'jquerybubblepopup-theme'
         });
     */
-    setTimeout("fadeBox()",2600);
+    boxTimeout = setTimeout("fadeBox()",1500);
 }
 
 function fadeBox() {
@@ -2492,6 +2522,9 @@ function launchFbAvalanche() {
 
     //remove all the arcs there
     retractArcsOfList(masterArcList);
+
+    //show our buttons
+    $j('.fmButtonHolder').css('bottom','60px');
 
     //short circuit
     if(shouldCircuit)
@@ -2689,7 +2722,11 @@ function handleMeBack(response){
 
 function askForAuth() {
     //add that button thing
-    $j('body').append('<div id="authBox"style="position:absolute;top:0px;left:0px;width:200px;height:200px;background:white;"><font style="color:black"><a style="color:black;cursor:pointer"onclick="javascript:fbLogin()">Please authenticate the app!</a></font><div class="fb-login-button" onclick="javascript:fbLogin()"></div></div>');
+    $j('body').append('<div id="authBox"style="position:absolute;top:-300px;left:-300px;width:390px;height:66px;" class="bubbleToStop smooth"><div style="color:black;cursor:pointer"onclick="javascript:fbLogin()" class="fbLoginButton"></div></div>');
+    var wHeight = $j(window).height();
+    var wWidth = $j(window).width();
+    $j('#authBox').css('left',String(wWidth/2 - 390*0.5) + 'px');
+    $j('#authBox').css('top',String(wHeight / 2 - 66*0.5) + 'px');
 }
 
 function initFacebook(){
@@ -2719,15 +2756,15 @@ function initFacebook(){
 
     <canvas id="earth-canvas" style="border: none;" width="500px" height="500px"></canvas>
 
-<div class="fmButtonHolder">
-    <div id="hometown" class="fmButton buttonGradient depressed"> H </div>
-    <div id="current" class="fmButton buttonGradient popped"> C </div>
-    <div id="education" class="fmButton buttonGradient popped"> E </div>
-    <div id="workplace" class="fmButton buttonGradient popped"> W </div>
+<div class="fmButtonHolder bubbleToStop smooth" style="position:relative;bottom:-100px">
+    <div id="hometown" class="fmButton buttonGradient depressed"> Hometown </div>
+    <div id="current" class="fmButton buttonGradient popped"> Current </div>
+    <div id="education" class="fmButton buttonGradient popped"> Education </div>
+    <div id="workplace" class="fmButton buttonGradient popped"> Workplace </div>
 </div>
 <div class="popupAnchor"></div>
 <div class="friendQueryHolder bubbleToStop">
-    <div id="friendQueryCounterBox" style="opacity:0" class="friendQueryCounter">
+    <div id="friendQueryCounterBox" class="friendQueryCounter">
         <p>Friends Queried:</p>
         <p id="friendQueryCounterNum">0</p>
         <div id="friendQueryCounterPics">
