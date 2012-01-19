@@ -151,7 +151,7 @@ var categoryToToColor = {   'hometown':white,
                             'workplace':white};
 
 //globals
-var shouldCircuit = true;
+var shouldCircuit = false;
 var thePopup = null;
 var canvas = null;
 
@@ -1661,6 +1661,7 @@ $j(document).ready(function(){
     webGLStart();
 
     theBatchSender = new batchSenderObj();
+    theDelayedSender = new delayedSenderObj();
 
     $j(window).resize(function(){resizeWindow();});
     //initial resize
@@ -1713,6 +1714,7 @@ var globalFriendDict = {};
 var friendsQueried = 0;
 
 var theBatchSender = null;
+var theDelayedSender = null;
 
 var boxTimeout = null;
 var notifyTimeout = null;
@@ -1780,7 +1782,7 @@ function makeBatchCallback(referenceToBatch,batchNum) {
     return toReturn;
 }
 
-batchSenderObj.prototype.sendBatch= function() {
+batchSenderObj.prototype.sendBatch = function() {
     this.batchReferences.push(this.currentBatch); 
     var batchNum = this.currentBatchNum;
 
@@ -1819,15 +1821,107 @@ batchSenderObj.prototype.processBatchBack = function(batchNum,response) {
         }
         else
         {
-            console.log("error on facebook graph");
-            console.log(theData);
+            var toHandle = JSON.parse(theData.body);
+            if(/Too many/.test(toHandle.error.message))
+            {
+                //we are querying too much... add this to the delayed sender
+                var theCb = ourBatch[i].cb;
+                var theSearchString = ourBatch[i].searchString;
+
+                theDelayedSender.addSearchQuery(theCb,theSearchString);
+            }
+            else
+            {
+                console.log("unknown error on facebook graph cb");
+                console.log(toHandle);
+            }
         }
     }
     //should be done
 }
 
+/////////////////End batchSendObj, begin delaySendObj///////////////////
+
+//Ok the idea of this thing is to basically always take queries, and then only
+//search every 10 minutes in order to let the graph api to cool down
+
+function delayedSenderObj() {
+    this.myQueries = [];
+    this.currentIndex = 0;
+    this.hasStarted = false;
+    this.myClockTimeout = null;
+    this.myQueryTimeout = null;
+    this.timeRemainingToSend = null;
+    this.timeWhenWeWillSend = null;
+    this.firstTime = true;
+    
+    this.myBatchSender = new batchSenderObj();
+}
+
+delayedSenderObj.prototype.addSearchQuery = function(objFunctionCallback,searchString) {
+    if(!this.hasStarted)
+    {
+        this.startTimer();
+    }
+
+    var theSearch = {'cb':objFunctionCallback,'searchString':searchString};
+    this.myQueries.push(theSearch);
+}
+
+delayedSenderObj.prototype.startTimer = function() {
+    this.hasStarted = true;
+
+    this.myQueryTimeout = setTimeout('theDelayedSender.sendNextFifty()',10*60*1000);
+    this.startClock();
+
+    if(this.firstTime)
+    {
+        this.firstTime = false;
+
+        topNotifyHtml("<h1>So popular!</h1><h4>You have so many friends that the application has exceeded the maximum rate of graph querying. Queries will begin again in 10 minutes");
+    }
+}
+
+delayedSenderObj.prototype.startClock = function() {
+    //show the clock, should fade nicely
+    $j('#countdownClockHolder').css('opacity',1);
+    var now = new Date();
+    this.timeWhenWeWillSend = new Date(now.getTime() + 10*60*1000);
+
+    this.refreshClock();
+}
+
+delayedSenderObj.prototype.hideClock = function() {
+    $j('#countdownClockHolder').css('opacity',0);
+}
+
+delayedSenderObj.prototype.refreshClock = function() {
+
+    //put in the date
+    var now = new Date();
+    var timeRemaining = new Date(this.timeWhenWeWillSend.getTime() - now.getTime());
+    var minutes = timeRemaining.getMinutes();
+    var seconds = timeRemaining.getSeconds();
+    secondsString = zeroPad(seconds,2);
+
+    var timeString = String(minutes) + ":" + secondsString;
+
+    $j('#countdownClock').html('<h1 style="margin:2px">' + timeString + '</h1>');
+
+    //if we are done
+    if(minutes==0 && seconds < 1)
+    {
+        this.hideClock();
+        return;
+    }
+
+    //make timeout
+    this.myClockTimeout = setTimeout('theDelayedSender.refreshClock()',1000);
+}
 
 
+
+//////////////////////Connection object//////////////////
 
 function connectionObj(category,fromPlace,toPlace) {
     this.myArc = null;
@@ -2984,6 +3078,13 @@ function initFacebook(){
 
         </div>
     </div>
+</div>
+
+<div id="countdownClockHolder" class="buttonGradient smooth countdownClockHolder">
+    <div id="countdownClock" class="countdownClockText">
+
+    </div>
+    Until next Query..
 </div>
 
 </body>

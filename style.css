@@ -332,6 +332,27 @@ h1 {
     max-width:600px;
     padding:20px;
 
+    -moz-box-shadow: inset 0px 0px 10px #000000;
+    -webkit-box-shadow: inset 0px 0px 10px #000000;
+    -webkit-box-shadow: 0px 0px 10px #FFFFFF;
+    box-shadow: 0px 0px 10px #FFFFFF;
+    filter: progid: DXImageTransform.Microsoft.gradient(startColorstr = '#262525', endColorstr = '#e6e1e2');
+    -ms-filter: "progid: DXImageTransform.Microsoft.gradient(startColorstr = '#262525', endColorstr = '#e6e1e2')";
+
+    color:#EEE;
+
+    border: 1px solid white;
+    text-align:center;
+    vertical-align:center;
+    cursor:pointer;
+    font-size:24px;
+
+    -moz-border-radius: 7px;
+    -webkit-border-radius: 7px;
+    border-radius: 7px;
+}
+
+.countdownClockHolder {
    /*IE 7 AND 8 DO NOT SUPPORT BORDER RADIUS*/
     -moz-box-shadow: inset 0px 0px 10px #000000;
     -webkit-box-shadow: inset 0px 0px 10px #000000;
@@ -346,19 +367,25 @@ h1 {
     /*All filters must be placed together*/
     -ms-filter: "progid: DXImageTransform.Microsoft.gradient(startColorstr = '#262525', endColorstr = '#e6e1e2')";
     /*Element must have a height (not auto)*/
-    /*All filters must be placed together*/
+  
+   -moz-background-clip: padding;
+    -webkit-background-clip: padding-box;
+    background-clip: padding-box;
 
-    color:#EEE;
-
-    border: 1px solid white;
+    position:absolute;
+    top:-2px;
+    right:-2px;
+    padding:5px;
+    opacity:0;
+   border: 1px solid white;
     text-align:center;
     vertical-align:center;
-    cursor:pointer;
-    font-size:24px;
+    font-size:12px;
 
     -moz-border-radius: 7px;
     -webkit-border-radius: 7px;
     border-radius: 7px;
+
 }
 
 .topNotifyBarHidden {
