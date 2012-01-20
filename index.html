@@ -109,14 +109,10 @@ void main(void) {
         gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
         vTextureCoord = aTextureCoord;
 
-        if (!uUseLighting) {
-            vLightWeighting = vec3(1.0, 1.0, 1.0);
-        } else {
             vec3 transformedNormal = uNMatrix * aVertexNormal;
             vNormal = transformedNormal;
             float directionalLightWeighting = max(dot(transformedNormal, uLightingDirection), 0.0);
             vLightWeighting = uAmbientColor + uDirectionalColor * directionalLightWeighting;
-        }
     }
 </script>
 
@@ -193,6 +189,7 @@ var ourTween = null;
 var tweenTime = 1000;
 var tweenEasing = TWEEN.Easing.Cubic.EaseInOut;
 var ourTweenOn = false;
+var timeoutMinutes = 10;
 
 
 /*****************CLASSES*******************/
@@ -599,7 +596,15 @@ function initGL(canvas) {
     } catch (e) {
     }
     if (!gl || /Firefox/.test(navigator.userAgent)) {
-        window.location = "http://petercottle.com/friendMapper2/browserFail.html";
+
+        if(/Safari/.test(navigator.userAgent))
+        {
+            window.location = "http://petercottle.com/friendMapper2/safari.html";
+        }
+        else
+        {
+            window.location = "http://petercottle.com/friendMapper2/browserFail.html";
+        }
     }
 }
 
@@ -955,6 +960,9 @@ function handleMouseDown(event) {
 }
 
 function fmButtonClick() {
+    //clear the notify just in case
+    topNotifyClear();
+
     //get the id
     var myCategory = $j(this).attr('id');
     if(myCategory)
@@ -1324,7 +1332,7 @@ function bubbleShow(textForBubble)
                                     'closingSpeed':100,
                                     'position':'top',
                                     'align':'center',
-                                    'distance':'0px',
+                                    'distance':'40px',
                                     'innerHtml':textForBubble,
                                     'innerHtmlStyle':   {
                                                             'max-width':'500px',
@@ -1814,16 +1822,17 @@ batchSenderObj.prototype.processBatchBack = function(batchNum,response) {
     for(var i = 0; i < response.length; i++)
     {
         var theData = response[i];
-        if(theData.code == 200)
+        if(theData && theData.code == 200)
         {
             var toHandle = JSON.parse(theData.body);
             ourBatch[i].cb(toHandle);
         }
-        else
+        else if (theData)
         {
             var toHandle = JSON.parse(theData.body);
             if(/Too many/.test(toHandle.error.message))
             {
+                console.log("too fast, adding...");
                 //we are querying too much... add this to the delayed sender
                 var theCb = ourBatch[i].cb;
                 var theSearchString = ourBatch[i].searchString;
@@ -1868,17 +1877,56 @@ delayedSenderObj.prototype.addSearchQuery = function(objFunctionCallback,searchS
     this.myQueries.push(theSearch);
 }
 
+delayedSenderObj.prototype.sendNextFifty = function() {
+    console.log("Sending next 50!");
+    var listToSend = [];
+    
+    var i = 0;
+    //get the first fifty or the rest remaining in the list, whatever they are
+    for(i = this.currentIndex; i < this.myQueries.length && i - this.currentIndex < 40; i++)
+    {
+        listToSend.push(this.myQueries[i]);
+    }
+    this.currentIndex = i;
+
+    //ok now index is updated, send these
+    for(var j = 0; j < listToSend.length; j++)
+    {
+        var cb = listToSend[j].cb;
+        var searchString = listToSend[j].searchString;
+
+        //after adding this, it should send 50 after they all get in there
+        this.myBatchSender.addSearchQuery(cb,searchString);
+    }
+    //manually override the batchsender object -- bad design i know
+
+    var temp = this.myBatchSender.myTimeout;
+    if(temp)
+    {
+        clearTimeout(temp);
+    }
+    this.myBatchSender.sendBatch();
+
+    //now we technically havent started
+    this.hasStarted = false;
+
+    if(this.currentIndex < this.myQueries.length - 1)
+    {
+        this.startTimer();
+    }
+}
+
 delayedSenderObj.prototype.startTimer = function() {
     this.hasStarted = true;
 
-    this.myQueryTimeout = setTimeout('theDelayedSender.sendNextFifty()',10*60*1000);
+    this.myQueryTimeout = setTimeout('theDelayedSender.sendNextFifty()',timeoutMinutes*60*1000);
     this.startClock();
 
     if(this.firstTime)
     {
         this.firstTime = false;
 
-        topNotifyHtml("<h1>So popular!</h1><h4>You have so many friends that the application has exceeded the maximum rate of graph querying. Queries will begin again in 10 minutes");
+        topNotifyHtml("<h1>So popular!</h1><h4>You have so many friends that the application has exceeded the maximum rate of graph querying. Queries will begin again in " + String(timeoutMinutes) + " minutes");
     }
 }
 
@@ -1886,7 +1934,7 @@ delayedSenderObj.prototype.startClock = function() {
     //show the clock, should fade nicely
     $j('#countdownClockHolder').css('opacity',1);
     var now = new Date();
-    this.timeWhenWeWillSend = new Date(now.getTime() + 10*60*1000);
+    this.timeWhenWeWillSend = new Date(now.getTime() + timeoutMinutes*60*1000);
 
     this.refreshClock();
 }
@@ -2398,8 +2446,12 @@ placeObj.prototype.fbGraphSearchCallback = function(response) {
     }
     else
     {
+        //console.log("no error on fb graph query but no location either....");
+        //console.log(this);
+        //console.log("and response");
+        //console.log(response);
         //oh no we should probably do the yql thing now
-        this.lastDitchYql();
+        //this.lastDitchYql();
     }
 }
 
@@ -2758,7 +2810,6 @@ function topNotifyHtml(theText) {
         topNotifyClear();
         var jsToExecute = "topNotifyHtml('" + theText + "');";
         notifyTimeout = setTimeout(jsToExecute,700);
-        console.log(jsToExecute);
         return;
     }
 
