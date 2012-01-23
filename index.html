@@ -944,12 +944,19 @@ var earthRotationMatrix = mat4.create();
 mat4.identity(earthRotationMatrix);
 
 function handleMouseDown(event) {
-    event.preventDefault();
+    //event.preventDefault();
     mouseDown = true;
 
     if(event.which == 1)
     {
         //primary click
+        
+        //dont do anything if we are inside a bubble thing
+        if(determineIfInPopup(event.srcElement))
+        {
+            return;
+        }
+
         mouseClickPick(event);
         //return;
     }
@@ -1320,6 +1327,7 @@ function buildHtmlForBubble(aConnection) {
         bHtml += "<p>" + aConnection.toPlace.ourJson.description;
     }
     
+    bHtml = bHtml.replace(/\/pages/g,'http://facebook.com/pages');
     bHtml += "</div>";
     bHtml += "</div>";
     return bHtml;
@@ -1371,7 +1379,7 @@ function drawSceneEither(forPicking) {
     setMatrixUniforms();
 
     //the 1500 is for when it gets crazay
-    for(var i = 0; i < masterArcList.length && i < 1500; i++)
+    for(var i = 0; i < masterArcList.length; i++)
     {
         var theArc = masterArcList[i];
         theArc.animateArc();
@@ -2529,7 +2537,7 @@ function fbLogin() {
             launchFbAvalanche();
 
          } else {
-             alert("You denied me");
+             topNotify("I\&#39;m sorry you don\&#39;t want to sign in with Facebook :( Feel free to play around with the globe though!");
          }
     },{scope:'user_about_me,friends_hometown,friends_location,friends_education_history,friends_work_history,friends_about_me,user_location,user_work_history,user_hometown,user_education_history'});
 }
