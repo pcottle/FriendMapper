@@ -947,13 +947,16 @@ function handleMouseDown(event) {
     //event.preventDefault();
     mouseDown = true;
 
+    console.log("got mouse down",event);
     if(event.which == 1)
     {
         //primary click
         
+        console.log("left button");
         //dont do anything if we are inside a bubble thing
         if(determineIfInPopup(event.srcElement))
         {
+            console.log("inide bubble!");
             return;
         }
 
@@ -2593,7 +2596,7 @@ function handleFriendBatchBack(response) {
     for(var i = 0; i < response.length; i++)
     {
         var theData = response[i];
-        if(theData.code == 200)
+        if(theData && theData.code == 200)
         {
             //i think we need to make this a json object
             var toHandle = JSON.parse(theData.body);
