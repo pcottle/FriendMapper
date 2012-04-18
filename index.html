@@ -1222,7 +1222,9 @@ function mouseClickPick(event) {
     var x = event.clientX;
     var y = event.clientY;
 
+    console.log("clicked mouse...");
     var theArc = getArcAtMousePos(x,y);
+    console.log("arc there",theArc);
     if(theArc)
     {
         arcClick(theArc);
