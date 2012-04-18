@@ -947,16 +947,13 @@ function handleMouseDown(event) {
     //event.preventDefault();
     mouseDown = true;
 
-    console.log("got mouse down",event);
     if(event.which == 1)
     {
         //primary click
         
-        console.log("left button");
         //dont do anything if we are inside a bubble thing
         if(determineIfInPopup(event.srcElement))
         {
-            console.log("inide bubble!");
             return;
         }
 
@@ -1225,9 +1222,7 @@ function mouseClickPick(event) {
     var x = event.clientX;
     var y = event.clientY;
 
-    console.log("clicked mouse...");
     var theArc = getArcAtMousePos(x,y);
-    console.log("arc there",theArc);
     if(theArc)
     {
         arcClick(theArc);
@@ -3126,7 +3121,7 @@ function initFacebook(){
 </div>
 <img src="loading.gif"class="loadingGif"/>
 
-<div class="friendQueryHolder bubbleToStop">
+<div class="friendQueryHolder bubbleToStop" style="display:none">
     <div id="friendQueryCounterBox" class="friendQueryCounter">
         <p>Friends Queried:</p>
         <p id="friendQueryCounterNum">0</p>
