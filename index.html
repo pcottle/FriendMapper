@@ -595,7 +595,7 @@ function initGL(canvas) {
         gl.viewportHeight = canvas.height;
     } catch (e) {
     }
-    if (!gl || /Firefox/.test(navigator.userAgent)) {
+    if (!gl){
 
         if(/Safari/.test(navigator.userAgent))
         {
