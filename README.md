@@ -16,7 +16,7 @@ You can click on an individual arc to obtain more information about the location
 
 * Since there are numerous Graph API calls during application startup, all the data arrives asychronously and out of order. For example, the GPS coordinates of "UC Berkeley" might arrive before finding out one of your friends studied there -- additionally, if the Facebook Graph API can't resolve the GPS coordinates of a location, Yahoo's YQL is polled as a last-ditch attempt. The end result of this async madness was to create a framework that could handle the arrival of data in any order, and when ready, generate the arc vertices and load those onto the GPU.
 
-* Finally, clicking on an arc involves a ton of behind-the-scenes trickery. There are no event handlers for WebGL elements because all the browser sees is a bunch of pixel data on a canvas. Consequently, in order to determine which arc was clicked underneath a mouse click event, the entire scene is rendered into an off-screen buffer with a different shader program. This different shader program renders each arc with a unique color (or RGB string); it then looks up the color underneath the mouse click event and uses this RGB string to lookup the associated arc. After this process is done, the necessary arc is animated and DOM elements are overlaid to show information to the user.
+* Finally, clicking on an arc involves a ton of behind-the-scenes trickery. There are no event handlers for WebGL elements because all the browser sees is a bunch of pixel data on a canvas. Consequently, in order to determine which arc was clicked underneath a mouse click event, the entire scene is rendered into an off-screen buffer with a different shader program. This different shader program renders each arc with a unique color (RGB string) and uses flat shading. After the scene is rendered, the color underneath the mouse click event is calculated and used to lookup the associated arc. After this process is done, the necessary arc is animated and DOM elements are overlaid to show information to the user.
 
 ## Video
 
@@ -24,7 +24,7 @@ If you would like to see a demo of the application rather than logging in (and l
 
 ## Disclaimer -- Query Rate Limit
 
-This application was written before Facebook introduced the 'additional fields' feature for the Graph API. This means that I have to perform two roundtrips to lookup all the hometowns and universities for a user's friends, and then a third roundtrip to get GSP coordinates. Even though these queries are batched, I often exceed the maximum request rate for the Graph API and the application halts.
+This application was written before Facebook introduced the 'additional fields' feature for the Graph API. This means that I have to perform two roundtrips to lookup all the hometowns and universities for a user's friends, and then a third roundtrip to get GPS coordinates. Even though these queries are batched, I often exceed the maximum request rate for the Graph API and the application only displays a portion of the available data.
 
 
 
